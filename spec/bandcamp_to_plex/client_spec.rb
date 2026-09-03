@@ -32,7 +32,7 @@ RSpec.describe BandcampToPlex::Client do
       Class.new do
         def body
           blob = { 'collection_count' => 1, 'fan_data' => { 'fan_id' => 4242 } }
-          '<div id="pagedata" data-blob="%s"></div>' % CGI.escapeHTML(JSON.generate(blob))
+          format('<div id="pagedata" data-blob="%s"></div>', CGI.escapeHTML(JSON.generate(blob)))
         end
 
         def is_a?(_klass)
@@ -48,7 +48,7 @@ RSpec.describe BandcampToPlex::Client do
     end
 
     it 'returns nil for a non-success response' do
-      bad = Class.new { def is_a?(_k); false; end }.new
+      bad = Class.new { def is_a?(_klass) = false }.new
       allow(client).to receive(:get).and_return(bad)
       expect(client.get_pagedata('https://bandcamp.com/testuser')).to be_nil
     end

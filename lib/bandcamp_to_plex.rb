@@ -21,23 +21,23 @@ require 'bandcamp_to_plex/cli'
 
 # Downloads all your Bandcamp purchases and organizes them for a Plex library.
 module BandcampToPlex
-  USER_URL = 'https://bandcamp.com/%s'.freeze
-  COLLECTION_SUMMARY_URL = 'https://bandcamp.com/api/fan/2/collection_summary'.freeze
-  COLLECTION_ITEMS_URL = 'https://bandcamp.com/api/fancollection/1/collection_items'.freeze
-  HIDDEN_ITEMS_URL = 'https://bandcamp.com/api/fancollection/1/hidden_items'.freeze
+  USER_URL = 'https://bandcamp.com/%s'
+  COLLECTION_SUMMARY_URL = 'https://bandcamp.com/api/fan/2/collection_summary'
+  COLLECTION_ITEMS_URL = 'https://bandcamp.com/api/fancollection/1/collection_items'
+  HIDDEN_ITEMS_URL = 'https://bandcamp.com/api/fancollection/1/hidden_items'
 
   FORMAT_MAP = {
-    'flac'          => '.flac',
-    'mp3-320'       => '.mp3',
-    'mp3-v0'        => '.mp3',
-    'wav'           => '.wav',
+    'flac' => '.flac',
+    'mp3-320' => '.mp3',
+    'mp3-v0' => '.mp3',
+    'wav' => '.wav',
     'aiff-lossless' => '.aiff',
-    'aac-hi'        => '.m4a',
-    'alac'          => '.m4a',
-    'vorbis'        => '.ogg'
+    'aac-hi' => '.m4a',
+    'alac' => '.m4a',
+    'vorbis' => '.ogg'
   }.freeze
 
-  AUDIO_EXTENSIONS = /\.(flac|mp3|wav|m4a|aiff|ogg)$/i.freeze
+  AUDIO_EXTENSIONS = /\.(flac|mp3|wav|m4a|aiff|ogg)$/i
   QUALITY_ORDER = %w[flac wav aiff-lossless alac aac-hi mp3-320 mp3-v0 vorbis].freeze
 
   class << self
@@ -45,11 +45,11 @@ module BandcampToPlex
   end
 
   def self.log(msg)
-    $stderr.puts msg
+    warn msg
   end
 
   def self.log_verbose(msg)
-    $stderr.puts msg if verbose
+    warn msg if verbose
   end
 
   # Convenience entrypoint; delegates to the CLI.

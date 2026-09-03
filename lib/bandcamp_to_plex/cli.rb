@@ -18,46 +18,17 @@ module BandcampToPlex
 
     def run(argv = ARGV)
       options = parse_args(argv)
-      if options[:username].nil? || options[:library].nil?
-        @err.puts(options[:parser])
-        return 1
-      end
+      return 1 unless valid_options?(options)
 
       FileUtils.mkdir_p(options[:library])
-
-      identity = CookieExtractor.get_identity_cookie(options[:browser], options[:cookie_file])
-      unless identity
-        print_cookie_error
-        return 1
-      end
-
-      BandcampToPlex.log 'Authenticated with Bandcamp.'
+      identity = authenticate(options)
+      return 1 unless identity
 
       client = Client.new(identity)
+      items = acquire_items(client, options)
+      return 1 unless items
 
-      items = client.get_collection(
-        options[:username],
-        include_hidden: options[:include_hidden],
-        since: options[:since],
-        until_date: options[:until_date]
-      )
-
-      if items.empty?
-        BandcampToPlex.log "\nNo downloadable items found. Check your username and ensure you're logged in."
-        return 1
-      end
-
-      BandcampToPlex.log "\nFound #{items.length} downloadable items in collection."
-
-      if options[:dry_run]
-        print_dry_run(items)
-        return 0
-      end
-
-      download_items(client, items, options)
-      write_state_file(items, options)
-      print_summary(stats, items, options)
-      0
+      finalize(client, options, items)
     end
 
     def parse_args(argv = ARGV)
@@ -83,9 +54,58 @@ module BandcampToPlex
 
     private
 
+    def valid_options?(options)
+      return true if options[:username] && options[:library]
+
+      @err.puts(options[:parser])
+      false
+    end
+
+    def authenticate(options)
+      identity = CookieExtractor.get_identity_cookie(options[:browser], options[:cookie_file])
+      if identity
+        BandcampToPlex.log 'Authenticated with Bandcamp.'
+      else
+        print_cookie_error
+      end
+      identity
+    end
+
+    def acquire_items(client, options)
+      items = client.get_collection(
+        options[:username],
+        include_hidden: options[:include_hidden],
+        since: options[:since],
+        until_date: options[:until_date]
+      )
+
+      if items.empty?
+        BandcampToPlex.log "\nNo downloadable items found. Check your username and ensure you're logged in."
+        return nil
+      end
+
+      BandcampToPlex.log "\nFound #{items.length} downloadable items in collection."
+      items
+    end
+
+    def finalize(client, options, items)
+      if options[:dry_run]
+        print_dry_run(items)
+        return 0
+      end
+
+      download_items(client, items, options)
+      write_state_file(items, options)
+      print_summary(stats, items, options)
+      0
+    end
+
+    # The OptionParser DSL's many opts.on/separator sends are an option
+    # declaration table, not logic complexity; AbcSize is not meaningful here.
+    # rubocop:disable Metrics/AbcSize
     def build_parser(options)
       OptionParser.new do |opts|
-        opts.banner = "Usage: #{$0} [options] <bandcamp-username>"
+        opts.banner = "Usage: #{$PROGRAM_NAME} [options] <bandcamp-username>"
         opts.separator ''
         opts.separator 'Downloads all your Bandcamp purchases and organizes them for Plex.'
         opts.separator ''
@@ -103,21 +123,31 @@ module BandcampToPlex
         opts.on('-f', '--format FORMAT', BandcampToPlex::FORMAT_MAP.keys, 'Audio format (default: flac)') { |v| options[:format] = v }
         opts.on('-b', '--browser BROWSER', %w[firefox chrome chromium brave edge auto],
                 'Browser to extract cookies from (default: auto)') { |v| options[:browser] = v }
-        opts.on('-c', '--cookie-file PATH', 'Path to cookies.txt file, or raw identity cookie value') { |v| options[:cookie_file] = v }
+        opts.on('-c', '--cookie-file PATH', 'Path to cookies.txt file, or raw identity cookie value') do |v|
+          options[:cookie_file] = v
+        end
         opts.on('-H', '--include-hidden', 'Also download hidden items') { options[:include_hidden] = true }
-        opts.on('--since DATE', 'Only download items purchased on or after this date (YYYY-MM-DD)') { |v| options[:since] = Date.parse(v) }
-        opts.on('--until DATE', 'Only download items purchased before this date (YYYY-MM-DD)') { |v| options[:until_date] = Date.parse(v) }
+        opts.on('--since DATE', 'Only download items purchased on or after this date (YYYY-MM-DD)') do |v|
+          options[:since] = Date.parse(v)
+        end
+        opts.on('--until DATE', 'Only download items purchased before this date (YYYY-MM-DD)') do |v|
+          options[:until_date] = Date.parse(v)
+        end
         opts.on('--force', 'Re-download even if album already exists') { options[:force] = true }
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
         opts.on('-v', '--verbose', 'Verbose output') { BandcampToPlex.verbose = true }
-        opts.on('-h', '--help', 'Show this help') { @out.puts opts; exit }
+        opts.on('-h', '--help', 'Show this help') do
+          @out.puts opts
+          exit
+        end
       end
     end
+    # rubocop:enable Metrics/AbcSize
 
     def print_cookie_error
       @err.puts "\nERROR: Could not find Bandcamp identity cookie."
       @err.puts "\nTo fix this, try one of:"
-      @err.puts "  1. Log in to bandcamp.com in Firefox or Chrome and run this script again."
+      @err.puts '  1. Log in to bandcamp.com in Firefox or Chrome and run this script again.'
       @err.puts "  2. Use a browser extension (e.g., 'Get cookies.txt LOCALLY') to export cookies,"
       @err.puts '     then pass the file with: --cookie-file /path/to/cookies.txt'
       @err.puts "  3. Open DevTools (F12) > Application > Cookies > bandcamp.com, find 'identity',"
@@ -156,7 +186,7 @@ module BandcampToPlex
       BandcampToPlex.log "\nSync state saved to #{state_file}"
     end
 
-    def print_summary(stats, items, options)
+    def print_summary(stats, _items, options)
       BandcampToPlex.log "\n--- Summary ---"
       BandcampToPlex.log "  Downloaded:  #{stats[:downloaded]}"
       BandcampToPlex.log "  Skipped:     #{stats[:skipped]}"

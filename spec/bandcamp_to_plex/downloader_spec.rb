@@ -11,7 +11,7 @@ RSpec.describe BandcampToPlex::Downloader do
         'download_items' => [
           {
             'downloads' => {
-              'flac'    => { 'url' => 'https://bcbits/flac.zip' },
+              'flac' => { 'url' => 'https://bcbits/flac.zip' },
               'mp3-320' => { 'url' => 'https://bcbits/mp3.zip' }
             }
           }

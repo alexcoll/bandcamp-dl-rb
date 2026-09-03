@@ -1,0 +1,45 @@
+# frozen_string_literal: true
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.1
+  SuggestExtensions: false
+
+# ---- Style / layout (handled by --autocorrect) ----
+
+# ---- Documentation ----
+Style/Documentation:
+  Enabled: false
+
+# ---- Lint ----
+# Inline disable/enable pairs are used deliberately for the OptionParser DSL
+# macro block; prefer the clearer pair over inline next-line directives.
+Style/DirectiveScope:
+  Enabled: false
+
+# ---- Metrics (deliberate, GB-domain logic / long specs) ----
+Metrics/AbcSize:
+  Max: 20
+Metrics/CyclomaticComplexity:
+  Max: 29
+Metrics/PerceivedComplexity:
+  Max: 29
+Metrics/MethodLength:
+  Max: 60
+Metrics/ClassLength:
+  Max: 220
+
+Metrics/BlockLength:
+  Enabled: true
+  Max: 40
+  Exclude:
+    - 'spec/**/*'
+
+# ---- Naming ----
+# Network-fetch helpers named get_* (get_collection, get_identity_cookie) are
+# intentional; offline ops named download_*/fetch_* are not predicates.
+Naming/AccessorMethodName:
+  Enabled: false
+Naming/PredicateMethod:
+  Exclude:
+    - 'lib/bandcamp_to_plex/downloader.rb'

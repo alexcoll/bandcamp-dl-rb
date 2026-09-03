@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'English'
 module BandcampToPlex
   # Extracts the Bandcamp `identity` cookie from the user's browser (Firefox or
   # Chrome), a cookies.txt file, or a raw cookie value.
@@ -9,38 +10,46 @@ module BandcampToPlex
     class << self
       # Returns the identity cookie value, or nil if none could be found.
       def get_identity_cookie(browser = nil, cookie_file = nil)
-        if cookie_file && File.exist?(cookie_file)
-          BandcampToPlex.log "Reading cookies from #{cookie_file}"
-          val = load_cookies_from_file(cookie_file)
-          return val if val
-        end
+        value = extract_cookie_file(cookie_file)
+        return value if value
+        return cookie_file if raw_cookie_value?(cookie_file)
 
-        if cookie_file && cookie_file =~ /\A[A-Za-z0-9_-]+\z/
-          BandcampToPlex.log 'Using raw identity cookie value'
-          return cookie_file
-        end
+        extract_from_browser(browser || 'auto')
+      end
 
-        case (browser || 'auto').downcase
-        when 'firefox'
-          BandcampToPlex.log 'Extracting identity cookie from Firefox...'
-          val = find_firefox_cookies
-          return val if val
-          BandcampToPlex.log 'Could not find identity cookie in Firefox.'
-        when 'chrome', 'chromium', 'brave', 'edge'
-          BandcampToPlex.log "Extracting identity cookie from #{browser}..."
-          val = find_chrome_cookies
-          return val if val
-          BandcampToPlex.log "Could not find identity cookie in #{browser}."
-        when 'auto'
-          BandcampToPlex.log 'Trying Firefox...'
-          val = find_firefox_cookies
-          return val if val
-          BandcampToPlex.log 'Trying Chrome...'
-          val = find_chrome_cookies
-          return val if val
-        end
+      def extract_cookie_file(cookie_file)
+        return nil unless cookie_file && File.exist?(cookie_file)
 
-        nil
+        BandcampToPlex.log "Reading cookies from #{cookie_file}"
+        load_cookies_from_file(cookie_file)
+      end
+
+      def raw_cookie_value?(cookie_file)
+        cookie_file && cookie_file =~ /\A[A-Za-z0-9_-]+\z/
+      end
+
+      def extract_from_browser(browser_mode)
+        case browser_mode.downcase
+        when 'firefox' then extract_with('Firefox', -> { find_firefox_cookies })
+        when 'chrome', 'chromium', 'brave', 'edge' then extract_with(browser_mode, -> { find_chrome_cookies })
+        when 'auto' then extract_auto
+        end
+      end
+
+      def extract_with(label, finder)
+        BandcampToPlex.log "Extracting identity cookie from #{label}..."
+        value = finder.call
+        BandcampToPlex.log "Could not find identity cookie in #{label}." unless value
+        value
+      end
+
+      def extract_auto
+        BandcampToPlex.log 'Trying Firefox...'
+        value = find_firefox_cookies
+        return value if value
+
+        BandcampToPlex.log 'Trying Chrome...'
+        find_chrome_cookies
       end
 
       # --- Firefox ---
@@ -116,7 +125,7 @@ module BandcampToPlex
         else
           get_linux_chrome_key
         end
-      rescue => e
+      rescue StandardError => e
         BandcampToPlex.log_verbose "  Chrome key retrieval failed: #{e.message}"
         nil
       end
@@ -125,7 +134,7 @@ module BandcampToPlex
         return nil unless system('which security > /dev/null 2>&1')
 
         result = `/usr/bin/security find-generic-password -s 'Chrome Safe Storage' -a 'Chrome' -w 2>&1`.strip
-        return nil unless $?.success? && !result.empty?
+        return nil unless $CHILD_STATUS.success? && !result.empty?
 
         result
       end
@@ -136,13 +145,13 @@ module BandcampToPlex
 
         json = JSON.parse(File.read(local_state))
         encrypted = json.dig('os_crypt', 'encrypted_key')
-        return nil unless encrypted && encrypted.start_with?('DPAPI')
+        return nil unless encrypted&.start_with?('DPAPI')
 
         # Decode base64 and strip the "DPAPI" prefix. DPAPI protection is
         # reversible only on the same Windows user; see CryptoAPI below.
         decoded = encrypted[5..].unpack1('m0')
         decrypt_windows_dpapi(decoded) if !decoded.empty? && defined?(WIN32OLE)
-      rescue => e
+      rescue StandardError => e
         BandcampToPlex.log_verbose "  Windows Chrome key read error: #{e.message}"
         nil
       end
@@ -152,7 +161,7 @@ module BandcampToPlex
 
         result = `secret-tool search 'application chrome' 'chrome' 2>&1`.strip
         result[/^\s*value:\s*(.+)$/, 1]
-      rescue => e
+      rescue StandardError => e
         BandcampToPlex.log_verbose "  Linux Chrome key read error: #{e.message}"
         nil
       end
@@ -178,27 +187,31 @@ module BandcampToPlex
         paths.each do |cookie_path|
           next unless File.exist?(cookie_path)
 
-          begin
-            tmp = File.join(Dir.tmpdir, "bc_chrome_cookies_#{Process.pid}.sqlite")
-            FileUtils.cp(cookie_path, tmp)
-            db = SQLite3::Database.new(tmp, readonly: true)
-
-            rows = db.execute(
-              "SELECT encrypted_value FROM cookies WHERE name = 'identity' " \
-              "AND host_key LIKE '%bandcamp.com%' LIMIT 1"
-            )
-            db.close
-            FileUtils.rm_f(tmp)
-
-            next unless rows.any? && rows[0][0]
-
-            decrypted = decrypt_chrome_value(rows[0][0], keys)
-            return decrypted if decrypted && !decrypted.empty?
-          rescue => e
-            BandcampToPlex.log_verbose "  Chrome cookie read error: #{e.message}"
-            FileUtils.rm_f(tmp)
-          end
+          value = read_chrome_cookie(cookie_path, keys)
+          return value unless value.nil?
         end
+        nil
+      end
+
+      def read_chrome_cookie(cookie_path, keys)
+        tmp = File.join(Dir.tmpdir, "bc_chrome_cookies_#{Process.pid}.sqlite")
+        FileUtils.cp(cookie_path, tmp)
+        db = SQLite3::Database.new(tmp, readonly: true)
+
+        rows = db.execute(
+          "SELECT encrypted_value FROM cookies WHERE name = 'identity' " \
+          "AND host_key LIKE '%bandcamp.com%' LIMIT 1"
+        )
+        db.close
+        FileUtils.rm_f(tmp)
+
+        return nil unless rows.any? && rows[0][0]
+
+        value = decrypt_chrome_value(rows[0][0], keys)
+        value unless value.empty?
+      rescue StandardError => e
+        BandcampToPlex.log_verbose "  Chrome cookie read error: #{e.message}"
+        FileUtils.rm_f(tmp)
         nil
       end
 
@@ -211,6 +224,7 @@ module BandcampToPlex
 
           fields = line.split("\t")
           next unless fields.length >= 7
+
           _domain, _flag, _path, _secure, _expires, name, value = fields
           return value if name == 'identity' && fields[0].include?('bandcamp.com')
         end
@@ -223,14 +237,14 @@ module BandcampToPlex
         b64 = [decoded].pack('m0')
         script = "Add-Type -AssemblyName System.Security;\n" \
                  "$e=[Convert]::FromBase64String('#{b64}');\n" \
-                 "$r=[System.Security.Cryptography.ProtectedData]::Unprotect(" \
+                 '$r=[System.Security.Cryptography.ProtectedData]::Unprotect(' \
                  "$e,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);\n" \
-                 "[Convert]::ToBase64String($r)"
+                 '[Convert]::ToBase64String($r)'
         result = `powershell -NoProfile -NonInteractive -Command "#{script}"`.strip
-        return result.unpack1('m0') if $?.success? && !result.empty?
+        return result.unpack1('m0') if $CHILD_STATUS.success? && !result.empty?
 
         nil
-      rescue => e
+      rescue StandardError => e
         BandcampToPlex.log_verbose "  Windows DPAPI decrypt error: #{e.message}"
         nil
       end

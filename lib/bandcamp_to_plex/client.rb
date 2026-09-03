@@ -46,7 +46,7 @@ module BandcampToPlex
         return JSON.parse(CGI.unescapeHTML(blob[1])) if blob
       end
       nil
-    rescue => e
+    rescue StandardError => e
       BandcampToPlex.log_verbose "  Error fetching page data: #{e.message}"
       nil
     end
@@ -56,143 +56,138 @@ module BandcampToPlex
       return nil unless resp.is_a?(Net::HTTPSuccess)
 
       JSON.parse(resp.body)['collection_summary']
-    rescue => e
+    rescue StandardError => e
       BandcampToPlex.log "Error fetching collection summary: #{e.message}"
       nil
     end
 
     def fetch_collection_items(fan_id, last_token, count)
       resp = post_json(BandcampToPlex::COLLECTION_ITEMS_URL, {
-        'fan_id' => fan_id,
-        'count' => count,
-        'older_than_token' => last_token
-      })
+                         'fan_id' => fan_id,
+                         'count' => count,
+                         'older_than_token' => last_token
+                       })
       return nil unless resp.is_a?(Net::HTTPSuccess)
 
       JSON.parse(resp.body)
-    rescue => e
+    rescue StandardError => e
       BandcampToPlex.log_verbose "  Error fetching collection items: #{e.message}"
       nil
     end
 
     def fetch_hidden_items(fan_id, last_token, count)
       resp = post_json(BandcampToPlex::HIDDEN_ITEMS_URL, {
-        'fan_id' => fan_id,
-        'count' => count,
-        'older_than_token' => last_token
-      })
+                         'fan_id' => fan_id,
+                         'count' => count,
+                         'older_than_token' => last_token
+                       })
       return nil unless resp.is_a?(Net::HTTPSuccess)
 
       JSON.parse(resp.body)
-    rescue => e
+    rescue StandardError => e
       BandcampToPlex.log_verbose "  Error fetching hidden items: #{e.message}"
       nil
     end
 
     def get_collection(username, include_hidden: false, since: nil, until_date: nil)
       log "Fetching collection page for #{username}..."
-      user_url = format(BandcampToPlex::USER_URL, username)
-      pagedata = get_pagedata(user_url)
-      unless pagedata
-        log "ERROR: Could not load page data for #{username}. Check your username and cookies."
-        return {}
-      end
-
-      unless pagedata.key?('collection_count')
-        log "ERROR: No collection info found. Is '#{username}' your correct Bandcamp username?"
-        log '       It should match the end of your collection URL (e.g., bandcamp.com/yourname).'
-        return {}
-      end
+      pagedata = load_pagedata(username)
+      return {} unless pagedata
 
       fan_id = pagedata['fan_data']['fan_id']
       log "  Fan ID: #{fan_id}"
 
-      items = {}
-      pagedata['item_cache']['collection']&.each_value do |item|
-        key = "#{item['sale_item_type']}#{item['sale_item_id']}"
-        items[key] = item
-      end
-
-      urls = pagedata['collection_data']['redownload_urls'] || {}
-      items.each do |key, item|
-        item['redownload_url'] = urls[key] if urls[key]
-      end
-
-      remaining = pagedata['collection_data']['item_count'] - pagedata['item_cache']['collection'].length
-      last_token = pagedata['collection_data']['last_token']
-
-      if remaining > 0
-        log "  Fetching #{remaining} more collection items..."
-        while remaining > 0 && last_token
-          batch = [remaining, 100].min
-          data = fetch_collection_items(fan_id, last_token, batch)
-          break unless data
-
-          data['items']&.each do |item|
-            key = "#{item['sale_item_type']}#{item['sale_item_id']}"
-            item['redownload_url'] = data['redownload_urls']&.dig(key)
-            items[key] = item if item['redownload_url']
-          end
-
-          last_token = data['last_token']
-          remaining -= data['items']&.length || 0
-        end
-      end
-
-      items = merge_hidden_items(items, pagedata, fan_id, last_token) if include_hidden
-
-      if since || until_date
-        items = items.select do |_key, item|
-          next true unless item['purchased']
-
-          begin
-            purchased = Time.parse(item['purchased'])
-            (since.nil? || purchased >= since) && (until_date.nil? || purchased < until_date)
-          rescue
-            true
-          end
-        end
-      end
-
-      items.select! { |_k, v| v['redownload_url'] && !v['redownload_url'].empty? }
-      items
+      items = cached_items(pagedata['item_cache']['collection'], pagedata['collection_data'])
+      items = fetch_paged(items, pagedata, :collection, fan_id, :fetch_collection_items)
+      items = merge_hidden_items(items, pagedata, fan_id) if include_hidden
+      items = filter_by_dates(items, since, until_date)
+      items.select { |_key, item| download_url?(item) }
     end
 
     private
 
-    def merge_hidden_items(items, pagedata, fan_id, last_token)
-      hidden_items = {}
-      pagedata['item_cache']['hidden']&.each_value do |item|
-        key = "#{item['sale_item_type']}#{item['sale_item_id']}"
-        hidden_items[key] = item
+    def load_pagedata(username)
+      pagedata = get_pagedata(format(BandcampToPlex::USER_URL, username))
+      return nil unless pagedata
+      return pagedata if pagedata.key?('collection_count')
+
+      log "ERROR: No collection info found. Is '#{username}' your correct Bandcamp username?"
+      nil
+    end
+
+    def cached_items(cache, data)
+      items = {}
+      cache&.each_value do |item|
+        items[item_key(item)] = item
       end
-      urls = pagedata['collection_data']['redownload_urls'] || {}
-      hidden_items.each do |key, item|
-        item['redownload_url'] = urls[key] if urls[key]
+      urls = data['redownload_urls'] || {}
+      items.each { |key, item| item['redownload_url'] = urls[key] if urls[key] }
+      items
+    end
+
+    def item_key(item)
+      "#{item['sale_item_type']}#{item['sale_item_id']}"
+    end
+
+    def fetch_paged(items, pagedata, scope, fan_id, fetcher)
+      remaining, last_token = pagination_state(pagedata, scope)
+      return items if remaining.nil?
+
+      log "  Fetching #{remaining} more #{scope} items..." if remaining.positive?
+      while remaining.positive? && last_token
+        resp = send(fetcher, fan_id, last_token, [remaining, 100].min)
+        break unless resp
+
+        incorporate_paged_response(items, resp)
+        last_token = resp['last_token']
+        remaining -= resp['items']&.length || 0
       end
+      items
+    end
 
-      remaining_hidden = pagedata['hidden_data']['item_count'] - pagedata['item_cache']['hidden'].length
-      last_token = pagedata['hidden_data']['last_token']
+    def pagination_state(pagedata, scope)
+      cache = pagedata['item_cache'][scope.to_s]
+      return [nil, nil] if cache.nil?
 
-      if remaining_hidden > 0
-        log "  Fetching #{remaining_hidden} hidden items..."
-        while remaining_hidden > 0 && last_token
-          batch = [remaining_hidden, 100].min
-          data = fetch_hidden_items(fan_id, last_token, batch)
-          break unless data
+      data = pagedata[pagedata_key(scope)]
+      [data['item_count'] - cache.length, data['last_token']]
+    end
 
-          data['items']&.each do |item|
-            key = "#{item['sale_item_type']}#{item['sale_item_id']}"
-            item['redownload_url'] = data['redownload_urls']&.dig(key)
-            hidden_items[key] = item if item['redownload_url']
-          end
+    def incorporate_paged_response(items, resp)
+      resp['items']&.each do |item|
+        item['redownload_url'] = resp['redownload_urls']&.dig(item_key(item))
+        items[item_key(item)] = item if download_url?(item)
+      end
+    end
 
-          last_token = data['last_token']
-          remaining_hidden -= data['items']&.length || 0
+    def merge_hidden_items(items, pagedata, fan_id)
+      hidden = cached_items(pagedata['item_cache']['hidden'], pagedata['collection_data'])
+      hidden = fetch_paged(hidden, pagedata, :hidden, fan_id, :fetch_hidden_items)
+      items.merge(hidden)
+    end
+
+    def filter_by_dates(items, since, until_date)
+      return items unless since || until_date
+
+      items.select do |_key, item|
+        next true unless item['purchased']
+
+        begin
+          purchased = Time.parse(item['purchased'])
+          (since.nil? || purchased >= since) && (until_date.nil? || purchased < until_date)
+        rescue StandardError
+          true
         end
       end
+    end
 
-      items.merge(hidden_items)
+    def download_url?(item)
+      url = item['redownload_url']
+      url && !url.empty?
+    end
+
+    def pagedata_key(scope)
+      "#{scope}_data"
     end
 
     def http_request(uri, req)
