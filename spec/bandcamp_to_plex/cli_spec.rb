@@ -35,6 +35,11 @@ RSpec.describe BandcampToPlex::CLI do
       expect(options[:browser]).to eq('chrome')
     end
 
+    it 'accepts safari as a browser option' do
+      options = described_class.parse_args(['--library', '/x', '--browser', 'safari', 'u'])
+      expect(options[:browser]).to eq('safari')
+    end
+
     it 'defaults browser to auto' do
       options = described_class.parse_args(['--library', '/x', 'u'])
       expect(options[:browser]).to eq('auto')
