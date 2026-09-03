@@ -177,16 +177,16 @@ module BandcampToPlex
     def filter_by_dates(items, since, until_date)
       return items unless since || until_date
 
-      items.select do |_key, item|
-        next true unless item['purchased']
+      items.select { |_key, item| in_date_range?(item, since, until_date) }
+    end
 
-        begin
-          purchased = Time.parse(item['purchased'])
-          (since.nil? || purchased >= since) && (until_date.nil? || purchased < until_date)
-        rescue StandardError
-          true
-        end
-      end
+    def in_date_range?(item, since, until_date)
+      return true unless item['purchased']
+
+      purchased = Time.parse(item['purchased'])
+      (since.nil? || purchased >= since) && (until_date.nil? || purchased < until_date)
+    rescue StandardError
+      true
     end
 
     def download_url?(item)
