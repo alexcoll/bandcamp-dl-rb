@@ -238,6 +238,120 @@ RSpec.describe BandcampToPlex::CookieExtractor::Chrome do
   end
 end
 
+RSpec.describe BandcampToPlex::CookieExtractor::Safari do
+  # Builds a minimal but byte-correct Cookies.binarycookies payload.
+  def build_cookie(url, name, value)
+    parts = [cstring(url), cstring(name), cstring('/'), cstring(value)]
+    offsets = string_offsets(parts)
+    body = +[offsets.last + parts.last.bytesize].pack('V')
+    body += cookie_header(offsets)
+    body += parts.join
+    body
+  end
+
+  def string_offsets(parts)
+    positions = [45]
+    parts[0..-2].each { |part| positions << (positions.last + part.bytesize) }
+    positions
+  end
+
+  def cookie_header(offsets)
+    result = +[0].pack('V')
+    result += "\x00".b + "\x00\x00\x00\x00".b
+    result += offsets.map { |o| [o].pack('N') }.join
+    result += [0, 0].pack('Q>Q>')
+    result
+  end
+
+  def cstring(str)
+    str.b + "\x00".b
+  end
+
+  def build_file(cookies, page_offset: 12)
+    page = "\x00\x00\x01\x00".b + [cookies.length].pack('V')
+    page += cookie_offsets(cookies).map { |o| [o].pack('V') }.join
+    page += cookies.join
+
+    'cook'.b + [1].pack('N') + [page_offset].pack('N') + page
+  end
+
+  def cookie_offsets(cookies)
+    position = 8 + (cookies.length * 4)
+    cookies.map do |cookie|
+      offset = position
+      position += cookie.bytesize
+      offset
+    end
+  end
+
+  describe '.cookies_path' do
+    after { allow(Dir).to receive(:home).and_return(Dir.home) }
+
+    it 'points at the default macOS cookies file under the home Library/Cookies dir' do
+      allow(Dir).to receive(:home).and_return('/Users/test')
+      expect(described_class.cookies_path)
+        .to eq('/Users/test/Library/Cookies/Cookies.binarycookies')
+    end
+  end
+
+  describe '.find' do
+    it 'reads the identity cookie from a Cookies.binarycookies file' do
+      file = File.join(Dir.tmpdir, "safari_#{Process.pid}.binarycookies")
+      File.write(file, build_file([build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')]))
+
+      expect(described_class.find(file)).to eq('SAFARI-IDENTITY')
+    ensure
+      FileUtils.rm_f(file)
+    end
+
+    it 'returns nil when the file does not exist' do
+      expect(described_class.find('/nonexistent/binarycookies')).to be_nil
+    end
+
+    it 'returns nil when no identity cookie is present' do
+      file = File.join(Dir.tmpdir, "safari_empty_#{Process.pid}.binarycookies")
+      File.write(file, build_file([build_cookie('https://example.com', 'session', 'nope')]))
+
+      expect(described_class.find(file)).to be_nil
+    ensure
+      FileUtils.rm_f(file)
+    end
+  end
+
+  describe '#parse' do
+    it 'returns the identity cookie value for a bandcamp.com identity cookie' do
+      data = build_file([build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')])
+      expect(described_class.new.parse(data)).to eq('SAFARI-IDENTITY')
+    end
+
+    it 'skips cookies that do not target bandcamp.com' do
+      data = build_file([build_cookie('https://other.example', 'identity', 'UNUSED')])
+      expect(described_class.new.parse(data)).to be_nil
+    end
+
+    it 'skips cookies that are not named identity' do
+      data = build_file([build_cookie('https://bandcamp.com', 'session', 'UNUSED')])
+      expect(described_class.new.parse(data)).to be_nil
+    end
+
+    it 'skips cookies before later finds the identity cookie' do
+      data = build_file([
+                          build_cookie('https://bandcamp.com', 'other', 'UNUSED'),
+                          build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')
+                        ])
+      expect(described_class.new.parse(data)).to eq('SAFARI-IDENTITY')
+    end
+
+    it 'returns nil for malformed data' do
+      expect(described_class.new.parse('not a cookie file at all')).to be_nil
+    end
+
+    it 'returns nil for a nil payload' do
+      expect(described_class.new.parse(nil)).to be_nil
+    end
+  end
+end
+
 RSpec.describe BandcampToPlex::CookieExtractor do
   describe '.get_identity_cookie' do
     it 'reads the raw identity cookie value from --cookie-file' do
@@ -254,13 +368,20 @@ RSpec.describe BandcampToPlex::CookieExtractor do
       expect(described_class.get_identity_cookie('firefox')).to eq('ff-cookie')
     end
 
-    it 'tries Firefox then Chrome in auto mode' do
+    it 'reads the cookie from Safari when browser is set to safari' do
+      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return('safari-cookie')
+      expect(described_class.get_identity_cookie('safari')).to eq('safari-cookie')
+    end
+
+    it 'tries Safari then Firefox then Chrome in auto mode' do
+      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
       allow(BandcampToPlex::CookieExtractor::Firefox).to receive(:find).and_return(nil)
       allow(BandcampToPlex::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
       expect(described_class.get_identity_cookie('auto')).to eq('chrome-cookie')
     end
 
     it 'returns nil when no cookie source succeeds' do
+      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
       allow(BandcampToPlex::CookieExtractor::Firefox).to receive(:find).and_return(nil)
       allow(BandcampToPlex::CookieExtractor::Chrome).to receive(:find).and_return(nil)
       expect(described_class.get_identity_cookie('auto')).to be_nil
