@@ -70,20 +70,25 @@ module BandcampToPlex
         return nil unless Dir.exist?(profile_dir)
 
         Dir.glob(File.join(profile_dir, '*')).each do |profile|
-          cookie_path = File.join(profile, FIREFOX_COOKIE)
-          next unless File.exist?(cookie_path)
-
-          begin
-            db = SQLite3::Database.new(cookie_path, readonly: true)
-            row = db.get_first_value(
-              "SELECT value FROM moz_cookies WHERE name = 'identity' AND baseDomain = 'bandcamp.com' LIMIT 1"
-            )
-            db.close
-            return row if row && !row.empty?
-          rescue SQLite3::Exception => e
-            BandcampToPlex.log_verbose "  Firefox cookie read error: #{e.message}"
-          end
+          value = read_firefox_cookie(File.join(profile, FIREFOX_COOKIE))
+          return value unless value.nil?
         end
+        nil
+      end
+
+      def read_firefox_cookie(cookie_path)
+        return nil unless File.exist?(cookie_path)
+
+        db = SQLite3::Database.new(cookie_path, readonly: true)
+        row = db.get_first_value(
+          "SELECT value FROM moz_cookies WHERE name = 'identity' AND baseDomain = 'bandcamp.com' LIMIT 1"
+        )
+        db.close
+        return row if row && !row.empty?
+
+        nil
+      rescue SQLite3::Exception => e
+        BandcampToPlex.log_verbose "  Firefox cookie read error: #{e.message}"
         nil
       end
 
