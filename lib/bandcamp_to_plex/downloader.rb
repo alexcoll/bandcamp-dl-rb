@@ -50,17 +50,20 @@ module BandcampToPlex
       pagedata = client.get_pagedata(album_url)
       return nil unless pagedata
 
-      download_items = pagedata['download_items']
-      return nil unless download_items&.any?
+      item = pagedata.dig('download_items', 0)
+      return nil unless item
 
-      item = download_items[0]
       downloads = item['downloads']
       return nil unless downloads
 
-      ([format] + BandcampToPlex::QUALITY_ORDER).uniq.each do |fmt|
-        return { url: downloads[fmt]['url'], format: fmt } if downloads[fmt] && downloads[fmt]['url']
-      end
+      first_available_format(downloads, format)
+    end
 
+    def self.first_available_format(downloads, format)
+      ([format] + BandcampToPlex::QUALITY_ORDER).uniq.each do |fmt|
+        url = downloads.dig(fmt, 'url')
+        return { url: url, format: fmt } if url
+      end
       nil
     end
 

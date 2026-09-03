@@ -133,7 +133,11 @@ module BandcampToPlex
       remaining, last_token = pagination_state(pagedata, scope)
       return items if remaining.nil?
 
-      log "  Fetching #{remaining} more #{scope} items..." if remaining.positive?
+      fetch_remaining(items, remaining, last_token, fan_id, fetcher)
+    end
+
+    def fetch_remaining(items, remaining, last_token, fan_id, fetcher)
+      log "  Fetching #{remaining} more #{fetcher_label(fetcher)} items..." if remaining.positive?
       while remaining.positive? && last_token
         resp = send(fetcher, fan_id, last_token, [remaining, 100].min)
         break unless resp
@@ -143,6 +147,10 @@ module BandcampToPlex
         remaining -= resp['items']&.length || 0
       end
       items
+    end
+
+    def fetcher_label(fetcher)
+      fetcher == :fetch_hidden_items ? 'hidden' : 'collection'
     end
 
     def pagination_state(pagedata, scope)
@@ -169,16 +177,16 @@ module BandcampToPlex
     def filter_by_dates(items, since, until_date)
       return items unless since || until_date
 
-      items.select do |_key, item|
-        next true unless item['purchased']
+      items.select { |_key, item| in_date_range?(item, since, until_date) }
+    end
 
-        begin
-          purchased = Time.parse(item['purchased'])
-          (since.nil? || purchased >= since) && (until_date.nil? || purchased < until_date)
-        rescue StandardError
-          true
-        end
-      end
+    def in_date_range?(item, since, until_date)
+      return true unless item['purchased']
+
+      purchased = Time.parse(item['purchased'])
+      (since.nil? || purchased >= since) && (until_date.nil? || purchased < until_date)
+    rescue StandardError
+      true
     end
 
     def download_url?(item)
