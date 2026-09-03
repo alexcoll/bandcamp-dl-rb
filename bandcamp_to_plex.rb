@@ -47,8 +47,19 @@ module BandcampToPlex
 
   # --- Cookie Extraction ---
 
+  def self.firefox_profile_dir
+    case RUBY_PLATFORM
+    when /darwin/
+      File.join(Dir.home, 'Library/Application Support/Firefox/Profiles')
+    when /mswin|mingw|cygwin/
+      File.join(ENV['APPDATA'].to_s, 'Mozilla', 'Firefox', 'Profiles')
+    else
+      File.join(Dir.home, '.mozilla/firefox')
+    end
+  end
+
   def self.find_firefox_cookies(profile_root = nil)
-    profile_dir = profile_root || File.join(Dir.home, 'Library/Application Support/Firefox/Profiles')
+    profile_dir = profile_root || firefox_profile_dir
     return nil unless Dir.exist?(profile_dir)
 
     Dir.glob(File.join(profile_dir, '*')).each do |profile|
@@ -67,69 +78,6 @@ module BandcampToPlex
       end
     end
     nil
-  end
-
-  def self.find_chrome_cookies(cookie_filename = nil)
-    chrome_paths = if cookie_filename
-                     [cookie_filename]
-                   else
-                     [
-                       File.join(Dir.home, 'Library/Application Support/Google/Chrome/Default/Cookies'),
-                       File.join(Dir.home, 'Library/Application Support/Google/Chrome/Profile 1/Cookies'),
-                     ]
-                   end
-
-    chrome_paths.each do |cookie_path|
-      next unless File.exist?(cookie_path)
-
-      begin
-        tmp = File.join(Dir.tmpdir, "bc_chrome_cookies_#{Process.pid}.sqlite")
-        FileUtils.cp(cookie_path, tmp)
-        db = SQLite3::Database.new(tmp, readonly: true)
-
-        rows = db.execute(
-          "SELECT encrypted_value FROM cookies WHERE name = 'identity' AND host_key LIKE '%bandcamp.com%' LIMIT 1"
-        )
-
-        if rows.any? && rows[0][0]
-          encrypted = rows[0][0]
-          if encrypted.is_a?(String) && encrypted.encoding == Encoding::ASCII_8BIT
-            if encrypted.start_with?('v10', 'v11')
-              key = get_chrome_key
-              if key
-                iv = "\x20" * 16
-                decipher = OpenSSL::Cipher.new('aes-128-cbc')
-                decipher.decrypt
-                decipher.key = key
-                decipher.iv = iv
-                decrypted = decipher.update(encrypted[3..]) + decipher.final
-                db.close
-                FileUtils.rm(tmp)
-                return decrypted
-              end
-            end
-          end
-        end
-
-        db.close
-        FileUtils.rm(tmp)
-      rescue => e
-        log_verbose "  Chrome cookie read error: #{e.message}"
-        FileUtils.rm(tmp) if File.exist?(tmp)
-      end
-    end
-    nil
-  end
-
-  def self.get_chrome_key
-    begin
-      result = `/security find-generic-password -s 'Chrome Safe Storage' -a 'Chrome' -w 2>&1`.strip
-      return result if $?.success? && !result.empty?
-    rescue => e
-      log_verbose "  Keychain lookup failed: #{e.message}"
-    end
-
-    'peanuts'
   end
 
   def self.load_cookies_from_file(path)
@@ -157,24 +105,16 @@ module BandcampToPlex
       return cookie_file
     end
 
-    browser_name = browser || 'firefox'
+    browser_name = browser || 'auto'
     case browser_name.downcase
     when 'firefox'
       log "Extracting identity cookie from Firefox..."
       val = find_firefox_cookies
       return val if val
       log "Could not find identity cookie in Firefox."
-    when 'chrome', 'chromium', 'brave', 'edge'
-      log "Extracting identity cookie from #{browser_name}..."
-      val = find_chrome_cookies
-      return val if val
-      log "Could not find identity cookie in #{browser_name}."
     when 'auto'
       log "Trying Firefox..."
       val = find_firefox_cookies
-      return val if val
-      log "Trying Chrome..."
-      val = find_chrome_cookies
       return val if val
     end
 
@@ -524,7 +464,7 @@ module BandcampToPlex
       opts.separator "Downloads all your Bandcamp purchases and organizes them for Plex."
       opts.separator ""
       opts.separator "Authentication:"
-      opts.separator "  The script reads your identity cookie from Firefox (or Chrome) automatically."
+      opts.separator "  The script reads your identity cookie from Firefox automatically."
       opts.separator "  If that fails, export your cookies from your browser and use --cookie-file."
       opts.separator "  Or provide the raw identity cookie value with --cookie-file."
       opts.separator ""
@@ -535,7 +475,7 @@ module BandcampToPlex
       opts.separator "Options:"
       opts.on('-l', '--library PATH', 'Plex library root path (required)') { |v| options[:library] = v }
       opts.on('-f', '--format FORMAT', FORMAT_MAP.keys, "Audio format (default: flac)") { |v| options[:format] = v }
-      opts.on('-b', '--browser BROWSER', %w[firefox chrome chromium brave edge auto],
+      opts.on('-b', '--browser BROWSER', %w[firefox auto],
               'Browser to extract cookies from (default: auto)') { |v| options[:browser] = v }
       opts.on('-c', '--cookie-file PATH', 'Path to cookies.txt file, or raw identity cookie value') { |v| options[:cookie_file] = v }
       opts.on('-H', '--include-hidden', 'Also download hidden items') { options[:include_hidden] = true }

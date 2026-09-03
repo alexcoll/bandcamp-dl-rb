@@ -83,6 +83,63 @@ RSpec.describe BandcampToPlex do
     end
   end
 
+  describe '.firefox_profile_dir' do
+    after { stub_const('RUBY_PLATFORM', RUBY_PLATFORM) }
+
+    it 'uses the macOS Application Support path on darwin' do
+      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
+      allow(Dir).to receive(:home).and_return('/Users/test')
+      expect(described_class.firefox_profile_dir)
+        .to eq('/Users/test/Library/Application Support/Firefox/Profiles')
+    end
+
+    it 'uses APPDATA on Windows' do
+      stub_const('RUBY_PLATFORM', 'x64-mingw32')
+      allow(ENV).to receive(:[]).with('APPDATA').and_return('C:/Users/Test/AppData/Roaming')
+      expect(described_class.firefox_profile_dir)
+        .to eq('C:/Users/Test/AppData/Roaming/Mozilla/Firefox/Profiles')
+    end
+
+    it 'uses ~/.mozilla/firefox on Linux and other platforms' do
+      stub_const('RUBY_PLATFORM', 'x86_64-linux')
+      allow(Dir).to receive(:home).and_return('/home/test')
+      expect(described_class.firefox_profile_dir).to eq('/home/test/.mozilla/firefox')
+    end
+  end
+
+  describe '.find_firefox_cookies' do
+    it 'returns the identity cookie value from a profile cookies.sqlite' do
+      profile_dir = File.join(Dir.tmpdir, "ff_profiles_#{Process.pid}")
+      FileUtils.mkdir_p(profile_dir)
+      profile = File.join(profile_dir, 'abc.default-release')
+      FileUtils.mkdir_p(profile)
+
+      db = SQLite3::Database.new(File.join(profile, 'cookies.sqlite'))
+      db.execute_batch <<~SQL
+        CREATE TABLE moz_cookies (
+          name TEXT, value TEXT, baseDomain TEXT
+        );
+        INSERT INTO moz_cookies (name, value, baseDomain)
+          VALUES ('identity', 'WIN-VALUE-123', 'bandcamp.com');
+      SQL
+      db.close
+
+      allow(described_class).to receive(:firefox_profile_dir).and_return(profile_dir)
+      expect(described_class.find_firefox_cookies).to eq('WIN-VALUE-123')
+    ensure
+      FileUtils.rm_rf(profile_dir) if profile_dir && Dir.exist?(profile_dir)
+    end
+
+    it 'returns nil when no profile has an identity cookie' do
+      empty_dir = File.join(Dir.tmpdir, "ff_empty_#{Process.pid}")
+      FileUtils.mkdir_p(empty_dir)
+      allow(described_class).to receive(:firefox_profile_dir).and_return(empty_dir)
+      expect(described_class.find_firefox_cookies).to be_nil
+    ensure
+      FileUtils.rm_rf(empty_dir) if empty_dir && Dir.exist?(empty_dir)
+    end
+  end
+
   describe BandcampToPlex::BandcampClient do
     let(:identity) { 'test-identity-value' }
     subject(:client) { described_class.new(identity) }

@@ -27,11 +27,14 @@ public download endpoint. This tool uses the same **undocumented
 `/api/fancollection/*` endpoints** the website uses, authenticated with your
 session `identity` cookie.
 
-The script tries to read the cookie automatically:
+The script tries to read the cookie automatically from **Firefox**, and
+detects your Firefox profile directory on every OS:
 
-1. **Firefox** — reads `cookies.sqlite` from your profile (plaintext).
-2. **Chrome / Chromium / Brave / Edge** — reads the encrypted cookie DB,
-   decrypting with the macOS Keychain key.
+| OS | Profile directory |
+|----|-------------------|
+| macOS | `~/Library/Application Support/Firefox/Profiles/` |
+| Windows | `%APPDATA%\Mozilla\Firefox\Profiles\` |
+| Linux | `~/.mozilla/firefox/` |
 
 If automatic extraction fails, provide the cookie manually:
 
@@ -72,7 +75,7 @@ bandcamp_to_plex.rb --library /path/to/plex myusername
 |------|-------------|
 | `-l, --library PATH` | **(required)** Plex library root path |
 | `-f, --format FORMAT` | Audio format. One of `flac mp3-320 mp3-v0 wav aiff-lossless aac-hi alac vorbis` (default `flac`) |
-| `-b, --browser NAME` | `firefox`, `chrome`, `chromium`, `brave`, `edge`, or `auto` (default `auto`) |
+| `-b, --browser NAME` | `firefox` or `auto` (default `auto`) |
 | `-c, --cookie-file PATH` | Path to `cookies.txt`, or a raw `identity` cookie value |
 | `-H, --include-hidden` | Also download items marked hidden in your collection |
 | `--since DATE` | Only items purchased on/after date (`YYYY-MM-DD`) |
