@@ -3,7 +3,7 @@
 Download all your [Bandcamp](https://bandcamp.com/) purchases (FLAC or the
 highest available quality) and organize them into a Plex-friendly library.
 
-- **Firefox-only** cookie auth (macOS, Windows, Linux)
+- **Firefox or Chrome** cookie auth (macOS, Windows, Linux)
 - FLAC by default, with automatic fallback through a quality ladder
 - Outputs to a clean `Artist/Album/track` layout
 - Fast re-runs via a small local state file
@@ -13,8 +13,8 @@ highest available quality) and organize them into a Plex-friendly library.
 
 ## What it does
 
-1. Reads your Bandcamp **`identity` session cookie** from your local Firefox
-   profile (the same cookie your logged-in browser uses).
+1. Reads your Bandcamp **`identity` session cookie** from your local Firefox or
+   Chrome profile (the same cookie your logged-in browser uses).
 2. Scans your Bandcamp **collection** for all purchased items.
 3. Downloads each as FLAC (or the best format available).
 4. Organizes everything into a Plex-friendly layout:
@@ -34,21 +34,32 @@ highest available quality) and organize them into a Plex-friendly library.
 - **Ruby** 3.1 or newer
 - **Bundler** (optional, but recommended)
 
-### Install dependencies
+### Run from a checkout
 
 ```bash
-# If you have Bundler
+git clone https://github.com/alexcoll/bandcamp-to-plex
+cd bandcamp-to-plex
 bundle install
 
-# ...or install the gems directly
-gem install rubyzip sqlite3 rspec
+# Run it directly from the repo
+bundle exec ruby exe/bandcamp_to_plex --help
 ```
 
-| Gem        | Used for                                     |
-|------------|----------------------------------------------|
-| `rubyzip`  | Extracting album zip archives                |
-| `sqlite3`  | Reading the Firefox cookie database          |
-| `rspec`    | Only needed to run the tests                 |
+### Install as a gem
+
+```bash
+gem build bandcamp-to-plex.gemspec
+gem install bandcamp-to-plex-*.gem
+
+# The `bandcamp_to_plex` command is then on your PATH
+bandcamp_to_plex --help
+```
+
+| Gem        | Used for                                       |
+|------------|------------------------------------------------|
+| `rubyzip`  | Extracting album zip archives                  |
+| `sqlite3`  | Reading the Firefox / Chrome cookie databases  |
+| `rspec`    | Only needed to run the tests                   |
 
 ---
 
@@ -68,8 +79,8 @@ You'll pass `yourname` as the final argument.
 ## Quick start
 
 ```bash
-# With a Firefox profile already logged into bandcamp.com
-ruby bandcamp_to_plex.rb --library ~/Music/Bandcamp yourname
+# With a Firefox or Chrome profile already logged into bandcamp.com
+bandcamp_to_plex --library ~/Music/Bandcamp yourname
 ```
 
 That's it — the script finds your `identity` cookie in Firefox, downloads
@@ -84,9 +95,12 @@ public download endpoint. This tool uses the same **undocumented
 `/api/fancollection/*` endpoints** the website does, authenticated with your
 session `identity` cookie.
 
-### Automatic (Firefox)
+### Automatic (Firefox or Chrome)
 
-The script detects your Firefox profile directory on every OS:
+By default the script tries Firefox first, then Chrome, and detects the
+relevant profile directory on every OS.
+
+**Firefox** profile directories:
 
 | OS      | Profile directory                                   |
 |---------|-----------------------------------------------------|
@@ -94,11 +108,24 @@ The script detects your Firefox profile directory on every OS:
 | Windows | `%APPDATA%\Mozilla\Firefox\Profiles\`               |
 | Linux   | `~/.mozilla/firefox/`                               |
 
-Make sure you are **logged into bandcamp.com in Firefox**, then run the script.
+**Chrome / Chromium / Brave / Edge** cookie database locations:
 
-> Note: If any running Firefox process is actively using its profile, the
+| OS      | Cookie database                                                     |
+|---------|---------------------------------------------------------------------|
+| macOS   | `~/Library/Application Support/Google/Chrome/Default/Network/Cookies` |
+| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Network\Cookies`      |
+| Linux   | `~/.config/google-chrome/Default/Network/Cookies`                     |
+
+> **Chrome notes:** Chrome encrypts its cookies with a key in your OS keychain
+> (Keychain on macOS, DPAPI on Windows, a keyring on Linux). The script reads
+> that key automatically when possible. If it cannot (e.g. an unsupported
+> login keychain), use `--cookie-file` as a fallback.
+>
+> For Firefox, if a running Firefox process is actively using its profile the
 > cookie database may be locked. Close Firefox (or quit it) if auto-detection
 > fails for that reason, or use `--cookie-file`.
+
+Use `--browser firefox` or `--browser chrome` to force one specifically.
 
 ### Manual (fallback)
 
@@ -109,7 +136,7 @@ If automatic extraction fails, provide the cookie manually with
 LOCALLY"* to export a Netscape-format `cookies.txt`:
 
 ```bash
-ruby bandcamp_to_plex.rb --library ~/Music/Bandcamp \
+bandcamp_to_plex --library ~/Music/Bandcamp \
   --cookie-file /path/to/cookies.txt yourname
 ```
 
@@ -118,7 +145,7 @@ Application → Cookies → `bandcamp.com`, copy the value of the `identity`
 cookie, and pass it directly:
 
 ```bash
-ruby bandcamp_to_plex.rb --library ~/Music/Bandcamp \
+bandcamp_to_plex --library ~/Music/Bandcamp \
   --cookie-file "RAW-IDENTITY-VALUE" yourname
 ```
 
@@ -131,7 +158,7 @@ ruby bandcamp_to_plex.rb --library ~/Music/Bandcamp \
 ## Full usage
 
 ```
-ruby bandcamp_to_plex.rb [options] <bandcamp-username>
+bandcamp_to_plex [options] <bandcamp-username>
 
 Downloads all your Bandcamp purchases and organizes them for Plex.
 ```
@@ -142,7 +169,7 @@ Downloads all your Bandcamp purchases and organizes them for Plex.
 |------------------------------|------------------------------------------------------------------|
 | `-l, --library PATH`         | **(required)** Plex library root path                            |
 | `-f, --format FORMAT`        | Download format (default: `flac`)                                |
-| `-b, --browser NAME`         | `firefox` or `auto` (default: `auto`)                            |
+| `-b, --browser NAME`         | `firefox`, `chrome`, `chromium`, `brave`, `edge`, or `auto` (default: `auto`, tries Firefox then Chrome) |
 | `-c, --cookie-file PATH`     | Path to `cookies.txt`, or a raw `identity` cookie value          |
 | `-H, --include-hidden`       | Also download items hidden in your collection                    |
 | `--since DATE`               | Only items purchased on/after `YYYY-MM-DD`                       |
@@ -163,22 +190,22 @@ Downloads all your Bandcamp purchases and organizes them for Plex.
 
 ```bash
 # Essentials: all purchases as FLAC
-ruby bandcamp_to_plex.rb --library ~/Music/Bandcamp yourname
+bandcamp_to_plex --library ~/Music/Bandcamp yourname
 
 # Windows: library on another drive
-ruby bandcamp_to_plex.rb -l "D:/Music/Bandcamp" yourname
+bandcamp_to_plex -l "D:/Music/Bandcamp" yourname
 
 # Only purchases since a date, as WAV
-ruby bandcamp_to_plex.rb -l ~/Music/Bandcamp --since 2025-01-01 -f wav yourname
+bandcamp_to_plex -l ~/Music/Bandcamp --since 2025-01-01 -f wav yourname
 
 # See what would be downloaded (does not hit the network for files)
-ruby bandcamp_to_plex.rb -l ~/Music/Bandcamp --dry-run yourname
+bandcamp_to_plex -l ~/Music/Bandcamp --dry-run yourname
 
 # Include hidden items and force a full re-download
-ruby bandcamp_to_plex.rb -l ~/Music/Bandcamp --include-hidden --force yourname
+bandcamp_to_plex -l ~/Music/Bandcamp --include-hidden --force yourname
 
 # Custom cookie file (when Firefox auto-detection fails)
-ruby bandcamp_to_plex.rb -l ~/Music/Bandcamp -c "identity-cookie-value" yourname
+bandcamp_to_plex -l ~/Music/Bandcamp -c "identity-cookie-value" yourname
 ```
 
 ---
@@ -221,10 +248,18 @@ rspec
 ## Project layout
 
 ```
-bandcamp_to_plex.rb         Main script (module + CLI)
-spec/                       RSpec tests
-Gemfile                     Gem dependencies
-LICENSE                     GPL-3.0
+exe/bandcamp_to_plex                  Executable entrypoint (CLI.run)
+lib/bandcamp_to_plex.rb               Loads the library and defines the module/constants
+lib/bandcamp_to_plex/version.rb       Version constant
+lib/bandcamp_to_plex/cli.rb           Argument parsing + run loop
+lib/bandcamp_to_plex/cookie_extractor.rb  Firefox / Chrome cookie extraction + key decrypt
+lib/bandcamp_to_plex/client.rb        HTTP client for the Bandcamp collection API
+lib/bandcamp_to_plex/downloader.rb    Download + unzip + Artist/Album layout logic
+lib/bandcamp_to_plex/utils.rb         Path sanitization helpers
+spec/                                 RSpec tests (one spec per class)
+Gemfile / bandcamp-to-plex.gemspec    Dependencies / packaging
+Rakefile                              Test task (rake spec)
+LICENSE                               GPL-3.0
 ```
 
 ---

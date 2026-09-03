@@ -1,0 +1,9 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Allow running directly from a checkout without installing the gem.
+$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
+
+require 'bandcamp_to_plex'
+
+exit(BandcampToPlex::CLI.run)

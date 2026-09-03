@@ -1,0 +1,59 @@
+# frozen_string_literal: true
+
+require 'net/http'
+require 'uri'
+require 'json'
+require 'optparse'
+require 'fileutils'
+require 'tmpdir'
+require 'zip'
+require 'sqlite3'
+require 'cgi'
+require 'date'
+require 'openssl'
+
+require 'bandcamp_to_plex/version'
+require 'bandcamp_to_plex/utils'
+require 'bandcamp_to_plex/cookie_extractor'
+require 'bandcamp_to_plex/client'
+require 'bandcamp_to_plex/downloader'
+require 'bandcamp_to_plex/cli'
+
+# Downloads all your Bandcamp purchases and organizes them for a Plex library.
+module BandcampToPlex
+  USER_URL = 'https://bandcamp.com/%s'.freeze
+  COLLECTION_SUMMARY_URL = 'https://bandcamp.com/api/fan/2/collection_summary'.freeze
+  COLLECTION_ITEMS_URL = 'https://bandcamp.com/api/fancollection/1/collection_items'.freeze
+  HIDDEN_ITEMS_URL = 'https://bandcamp.com/api/fancollection/1/hidden_items'.freeze
+
+  FORMAT_MAP = {
+    'flac'          => '.flac',
+    'mp3-320'       => '.mp3',
+    'mp3-v0'        => '.mp3',
+    'wav'           => '.wav',
+    'aiff-lossless' => '.aiff',
+    'aac-hi'        => '.m4a',
+    'alac'          => '.m4a',
+    'vorbis'        => '.ogg'
+  }.freeze
+
+  AUDIO_EXTENSIONS = /\.(flac|mp3|wav|m4a|aiff|ogg)$/i.freeze
+  QUALITY_ORDER = %w[flac wav aiff-lossless alac aac-hi mp3-320 mp3-v0 vorbis].freeze
+
+  class << self
+    attr_accessor :verbose
+  end
+
+  def self.log(msg)
+    $stderr.puts msg
+  end
+
+  def self.log_verbose(msg)
+    $stderr.puts msg if verbose
+  end
+
+  # Convenience entrypoint; delegates to the CLI.
+  def self.run(argv = ARGV, out: $stdout, err: $stderr)
+    CLI.run(argv, out: out, err: err)
+  end
+end
