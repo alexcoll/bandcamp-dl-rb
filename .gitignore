@@ -1,0 +1,10 @@
+.bundle/
+vendor/bundle/
+*.gem
+Gemfile.lock
+*.sqlite
+*.sqlite3
+tmp/
+coverage/
+.bandcamp-sync.json
+.DS_Store
