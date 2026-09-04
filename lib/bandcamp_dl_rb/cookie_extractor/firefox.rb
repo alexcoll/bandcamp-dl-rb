@@ -4,7 +4,7 @@ require 'sqlite3'
 require 'fileutils'
 require 'tmpdir'
 
-module BandcampToPlex
+module BandcampDlRb
   class CookieExtractor
     # Reads the Bandcamp `identity` cookie from a Firefox profile.
     class Firefox
@@ -65,7 +65,7 @@ module BandcampToPlex
         FileUtils.rm_f(tmp)
         present?(value) ? value : nil
       rescue StandardError => e
-        BandcampToPlex.log_verbose "  Firefox cookie read error: #{e.message}"
+        BandcampDlRb.log_verbose "  Firefox cookie read error: #{e.message}"
         FileUtils.rm_f(tmp) if tmp
         nil
       end

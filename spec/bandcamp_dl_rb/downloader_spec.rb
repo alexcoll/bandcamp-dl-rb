@@ -2,8 +2,8 @@
 
 require_relative '../spec_helper'
 
-RSpec.describe BandcampToPlex::Downloader do
-  let(:client) { BandcampToPlex::Client.new('ident') }
+RSpec.describe BandcampDlRb::Downloader do
+  let(:client) { BandcampDlRb::Client.new('ident') }
 
   describe '.get_download_url' do
     let(:pagedata) do

@@ -38,4 +38,4 @@ Naming/AccessorMethodName:
   Enabled: false
 Naming/PredicateMethod:
   Exclude:
-    - 'lib/bandcamp_to_plex/downloader.rb'
+    - 'lib/bandcamp_dl_rb/downloader.rb'

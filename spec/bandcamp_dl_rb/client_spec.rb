@@ -2,7 +2,7 @@
 
 require_relative '../spec_helper'
 
-RSpec.describe BandcampToPlex::Client do
+RSpec.describe BandcampDlRb::Client do
   let(:identity) { 'test-identity-value' }
   subject(:client) { described_class.new(identity) }
 

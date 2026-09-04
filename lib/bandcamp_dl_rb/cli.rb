@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module BandcampToPlex
+module BandcampDlRb
   # Command-line interface: argument parsing and the top-level run loop.
   class CLI
     def self.parse_args(argv = ARGV)
@@ -64,7 +64,7 @@ module BandcampToPlex
     def authenticate(options)
       identity = CookieExtractor.get_identity_cookie(options[:browser], options[:cookie_file])
       if identity
-        BandcampToPlex.log 'Authenticated with Bandcamp.'
+        BandcampDlRb.log 'Authenticated with Bandcamp.'
       else
         print_cookie_error
       end
@@ -80,11 +80,11 @@ module BandcampToPlex
       )
 
       if items.empty?
-        BandcampToPlex.log "\nNo downloadable items found. Check your username and ensure you're logged in."
+        BandcampDlRb.log "\nNo downloadable items found. Check your username and ensure you're logged in."
         return nil
       end
 
-      BandcampToPlex.log "\nFound #{items.length} downloadable items in collection."
+      BandcampDlRb.log "\nFound #{items.length} downloadable items in collection."
       items
     end
 
@@ -120,7 +120,7 @@ module BandcampToPlex
 
         opts.separator 'Options:'
         opts.on('-l', '--library PATH', 'Plex library root path (required)') { |v| options[:library] = v }
-        opts.on('-f', '--format FORMAT', BandcampToPlex::FORMAT_MAP.keys, 'Audio format (default: flac)') { |v| options[:format] = v }
+        opts.on('-f', '--format FORMAT', BandcampDlRb::FORMAT_MAP.keys, 'Audio format (default: flac)') { |v| options[:format] = v }
         opts.on('-b', '--browser BROWSER', %w[firefox chrome chromium brave edge safari auto],
                 'Browser to extract cookies from (default: auto)') { |v| options[:browser] = v }
         opts.on('-c', '--cookie-file PATH', 'Path to cookies.txt file, or raw identity cookie value') do |v|
@@ -135,7 +135,7 @@ module BandcampToPlex
         end
         opts.on('--force', 'Re-download even if album already exists') { options[:force] = true }
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
-        opts.on('-v', '--verbose', 'Verbose output') { BandcampToPlex.verbose = true }
+        opts.on('-v', '--verbose', 'Verbose output') { BandcampDlRb.verbose = true }
         opts.on('-h', '--help', 'Show this help') do
           @out.puts opts
           exit
@@ -155,13 +155,13 @@ module BandcampToPlex
     end
 
     def print_dry_run(items)
-      BandcampToPlex.log "\n--- Dry Run ---"
+      BandcampDlRb.log "\n--- Dry Run ---"
       items.each_value do |item|
         artist = item['band_name'] || 'Unknown Artist'
         title = item['item_title'] || 'Unknown Album'
-        BandcampToPlex.log "  #{artist} - #{title}"
+        BandcampDlRb.log "  #{artist} - #{title}"
       end
-      BandcampToPlex.log "\nTotal: #{items.length} items would be downloaded"
+      BandcampDlRb.log "\nTotal: #{items.length} items would be downloaded"
     end
 
     def download_items(client, items, options)
@@ -183,16 +183,16 @@ module BandcampToPlex
         'item_ids' => items.keys
       }
       File.write(state_file, JSON.pretty_generate(state))
-      BandcampToPlex.log "\nSync state saved to #{state_file}"
+      BandcampDlRb.log "\nSync state saved to #{state_file}"
     end
 
     def print_summary(stats, _items, options)
-      BandcampToPlex.log "\n--- Summary ---"
-      BandcampToPlex.log "  Downloaded:  #{stats[:downloaded]}"
-      BandcampToPlex.log "  Skipped:     #{stats[:skipped]}"
-      BandcampToPlex.log "  Unavailable: #{stats[:unavailable]}"
-      BandcampToPlex.log "  Failed:      #{stats[:failed]}"
-      BandcampToPlex.log "  Library:     #{options[:library]}"
+      BandcampDlRb.log "\n--- Summary ---"
+      BandcampDlRb.log "  Downloaded:  #{stats[:downloaded]}"
+      BandcampDlRb.log "  Skipped:     #{stats[:skipped]}"
+      BandcampDlRb.log "  Unavailable: #{stats[:unavailable]}"
+      BandcampDlRb.log "  Failed:      #{stats[:failed]}"
+      BandcampDlRb.log "  Library:     #{options[:library]}"
     end
 
     def stats

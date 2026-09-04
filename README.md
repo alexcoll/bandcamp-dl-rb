@@ -1,4 +1,4 @@
-# bandcamp-to-plex
+# bandcamp-dl-rb
 
 Download all your [Bandcamp](https://bandcamp.com/) purchases (FLAC or the
 highest available quality) and organize them into a Plex-friendly library.
@@ -37,22 +37,22 @@ highest available quality) and organize them into a Plex-friendly library.
 ### Run from a checkout
 
 ```bash
-git clone https://github.com/alexcoll/bandcamp-to-plex
-cd bandcamp-to-plex
+git clone https://github.com/alexcoll/bandcamp-dl-rb
+cd bandcamp-dl-rb
 bundle install
 
 # Run it directly from the repo
-bundle exec ruby exe/bandcamp_to_plex --help
+bundle exec ruby exe/bandcamp_dl_rb --help
 ```
 
 ### Install as a gem
 
 ```bash
-gem build bandcamp-to-plex.gemspec
-gem install bandcamp-to-plex-*.gem
+gem build bandcamp-dl-rb.gemspec
+gem install bandcamp-dl-rb-*.gem
 
-# The `bandcamp_to_plex` command is then on your PATH
-bandcamp_to_plex --help
+# The `bandcamp_dl_rb` command is then on your PATH
+bandcamp_dl_rb --help
 ```
 
 | Gem        | Used for                                       |
@@ -80,7 +80,7 @@ You'll pass `yourname` as the final argument.
 
 ```bash
 # With a Firefox, Safari, or Chrome profile already logged into bandcamp.com
-bandcamp_to_plex --library ~/Music/Bandcamp yourname
+bandcamp_dl_rb --library ~/Music/Bandcamp yourname
 ```
 
 That's it — the script finds your `identity` cookie in Firefox (then Safari,
@@ -149,7 +149,7 @@ If automatic extraction fails, provide the cookie manually with
 LOCALLY"* to export a Netscape-format `cookies.txt`:
 
 ```bash
-bandcamp_to_plex --library ~/Music/Bandcamp \
+bandcamp_dl_rb --library ~/Music/Bandcamp \
   --cookie-file /path/to/cookies.txt yourname
 ```
 
@@ -158,7 +158,7 @@ Application → Cookies → `bandcamp.com`, copy the value of the `identity`
 cookie, and pass it directly:
 
 ```bash
-bandcamp_to_plex --library ~/Music/Bandcamp \
+bandcamp_dl_rb --library ~/Music/Bandcamp \
   --cookie-file "RAW-IDENTITY-VALUE" yourname
 ```
 
@@ -171,7 +171,7 @@ bandcamp_to_plex --library ~/Music/Bandcamp \
 ## Full usage
 
 ```
-bandcamp_to_plex [options] <bandcamp-username>
+bandcamp_dl_rb [options] <bandcamp-username>
 
 Downloads all your Bandcamp purchases and organizes them for Plex.
 ```
@@ -203,22 +203,22 @@ Downloads all your Bandcamp purchases and organizes them for Plex.
 
 ```bash
 # Essentials: all purchases as FLAC
-bandcamp_to_plex --library ~/Music/Bandcamp yourname
+bandcamp_dl_rb --library ~/Music/Bandcamp yourname
 
 # Windows: library on another drive
-bandcamp_to_plex -l "D:/Music/Bandcamp" yourname
+bandcamp_dl_rb -l "D:/Music/Bandcamp" yourname
 
 # Only purchases since a date, as WAV
-bandcamp_to_plex -l ~/Music/Bandcamp --since 2025-01-01 -f wav yourname
+bandcamp_dl_rb -l ~/Music/Bandcamp --since 2025-01-01 -f wav yourname
 
 # See what would be downloaded (does not hit the network for files)
-bandcamp_to_plex -l ~/Music/Bandcamp --dry-run yourname
+bandcamp_dl_rb -l ~/Music/Bandcamp --dry-run yourname
 
 # Include hidden items and force a full re-download
-bandcamp_to_plex -l ~/Music/Bandcamp --include-hidden --force yourname
+bandcamp_dl_rb -l ~/Music/Bandcamp --include-hidden --force yourname
 
 # Custom cookie file (when Firefox auto-detection fails)
-bandcamp_to_plex -l ~/Music/Bandcamp -c "identity-cookie-value" yourname
+bandcamp_dl_rb -l ~/Music/Bandcamp -c "identity-cookie-value" yourname
 ```
 
 ---
@@ -261,16 +261,16 @@ rspec
 ## Project layout
 
 ```
-exe/bandcamp_to_plex                  Executable entrypoint (CLI.run)
-lib/bandcamp_to_plex.rb               Loads the library and defines the module/constants
-lib/bandcamp_to_plex/version.rb       Version constant
-lib/bandcamp_to_plex/cli.rb           Argument parsing + run loop
-lib/bandcamp_to_plex/cookie_extractor.rb  Firefox / Chrome cookie extraction + key decrypt
-lib/bandcamp_to_plex/client.rb        HTTP client for the Bandcamp collection API
-lib/bandcamp_to_plex/downloader.rb    Download + unzip + Artist/Album layout logic
-lib/bandcamp_to_plex/utils.rb         Path sanitization helpers
+exe/bandcamp_dl_rb                  Executable entrypoint (CLI.run)
+lib/bandcamp_dl_rb.rb               Loads the library and defines the module/constants
+lib/bandcamp_dl_rb/version.rb       Version constant
+lib/bandcamp_dl_rb/cli.rb           Argument parsing + run loop
+lib/bandcamp_dl_rb/cookie_extractor.rb  Firefox / Chrome cookie extraction + key decrypt
+lib/bandcamp_dl_rb/client.rb        HTTP client for the Bandcamp collection API
+lib/bandcamp_dl_rb/downloader.rb    Download + unzip + Artist/Album layout logic
+lib/bandcamp_dl_rb/utils.rb         Path sanitization helpers
 spec/                                 RSpec tests (one spec per class)
-Gemfile / bandcamp-to-plex.gemspec    Dependencies / packaging
+Gemfile / bandcamp-dl-rb.gemspec    Dependencies / packaging
 Rakefile                              Test task (rake spec)
 LICENSE                               GPL-3.0
 ```

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module BandcampToPlex
+module BandcampDlRb
   # Downloads Bandcamp purchase items (single tracks or zip albums) and
   # organizes them into an Artist/Album directory layout for Plex.
   class Downloader
@@ -19,7 +19,7 @@ module BandcampToPlex
           return true
         end
 
-        BandcampToPlex.log_verbose "    Download error on attempt #{attempt + 1}"
+        BandcampDlRb.log_verbose "    Download error on attempt #{attempt + 1}"
         sleep(2**attempt)
       end
       false
@@ -34,7 +34,7 @@ module BandcampToPlex
         http.request(req)
       end
     rescue StandardError => e
-      BandcampToPlex.log_verbose "    Download error: #{e.message}"
+      BandcampDlRb.log_verbose "    Download error: #{e.message}"
       nil
     end
 
@@ -60,7 +60,7 @@ module BandcampToPlex
     end
 
     def self.first_available_format(downloads, format)
-      ([format] + BandcampToPlex::QUALITY_ORDER).uniq.each do |fmt|
+      ([format] + BandcampDlRb::QUALITY_ORDER).uniq.each do |fmt|
         url = downloads.dig(fmt, 'url')
         return { url: url, format: fmt } if url
       end
@@ -73,14 +73,14 @@ module BandcampToPlex
       FileUtils.mkdir_p(album_dir)
 
       if album_exists?(album_dir) && !force
-        BandcampToPlex.log "  Skipping: #{label} (already exists)"
+        BandcampDlRb.log "  Skipping: #{label} (already exists)"
         return :skipped
       end
 
-      BandcampToPlex.log "  Downloading: #{label}"
+      BandcampDlRb.log "  Downloading: #{label}"
       dl = get_download_url(client, item['redownload_url'], format)
       unless dl
-        BandcampToPlex.log '    No download available for this format'
+        BandcampDlRb.log '    No download available for this format'
         return :unavailable
       end
 
@@ -97,8 +97,8 @@ module BandcampToPlex
     end
 
     def self.album_dir_for(item, dest_dir)
-      artist = BandcampToPlex::Utils.sanitize_path(item['band_name'] || 'Unknown Artist')
-      title = BandcampToPlex::Utils.sanitize_path(item['item_title'] || 'Unknown Album')
+      artist = BandcampDlRb::Utils.sanitize_path(item['band_name'] || 'Unknown Artist')
+      title = BandcampDlRb::Utils.sanitize_path(item['item_title'] || 'Unknown Album')
       File.join(dest_dir, artist, title)
     end
 
@@ -112,11 +112,11 @@ module BandcampToPlex
 
     def self.download_to_temp(client, download, tmp_dir)
       FileUtils.mkdir_p(tmp_dir)
-      ext = BandcampToPlex::FORMAT_MAP[download[:format]] || '.zip'
+      ext = BandcampDlRb::FORMAT_MAP[download[:format]] || '.zip'
       tmp_file = File.join(tmp_dir, "download#{ext}")
 
       unless download_file(client, download[:url], tmp_file)
-        BandcampToPlex.log '    Failed to download'
+        BandcampDlRb.log '    Failed to download'
         FileUtils.rm_rf(tmp_dir)
         return nil
       end
@@ -130,7 +130,7 @@ module BandcampToPlex
         ok = extract_zip(tmp_file, album_dir)
       else
         FileUtils.cp(tmp_file, album_dir)
-        BandcampToPlex.log "    Saved to #{album_dir}"
+        BandcampDlRb.log "    Saved to #{album_dir}"
         ok = true
       end
       FileUtils.rm_rf(File.dirname(tmp_file))
@@ -141,15 +141,15 @@ module BandcampToPlex
       Zip::File.open(tmp_file) do |zip|
         zip.each do |entry|
           next if entry.name.start_with?('__MACOSX', '.')
-          next unless File.basename(entry.name).match?(BandcampToPlex::AUDIO_EXTENSIONS)
+          next unless File.basename(entry.name).match?(BandcampDlRb::AUDIO_EXTENSIONS)
 
           entry.extract(File.join(album_dir, File.basename(entry.name)))
         end
       end
-      BandcampToPlex.log "    Extracted to #{album_dir}"
+      BandcampDlRb.log "    Extracted to #{album_dir}"
       true
     rescue StandardError => e
-      BandcampToPlex.log "    Error extracting zip: #{e.message}"
+      BandcampDlRb.log "    Error extracting zip: #{e.message}"
       false
     end
   end

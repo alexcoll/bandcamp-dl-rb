@@ -12,15 +12,15 @@ require 'cgi'
 require 'date'
 require 'openssl'
 
-require 'bandcamp_to_plex/version'
-require 'bandcamp_to_plex/utils'
-require 'bandcamp_to_plex/cookie_extractor'
-require 'bandcamp_to_plex/client'
-require 'bandcamp_to_plex/downloader'
-require 'bandcamp_to_plex/cli'
+require 'bandcamp_dl_rb/version'
+require 'bandcamp_dl_rb/utils'
+require 'bandcamp_dl_rb/cookie_extractor'
+require 'bandcamp_dl_rb/client'
+require 'bandcamp_dl_rb/downloader'
+require 'bandcamp_dl_rb/cli'
 
 # Downloads all your Bandcamp purchases and organizes them for a Plex library.
-module BandcampToPlex
+module BandcampDlRb
   USER_URL = 'https://bandcamp.com/%s'
   COLLECTION_SUMMARY_URL = 'https://bandcamp.com/api/fan/2/collection_summary'
   COLLECTION_ITEMS_URL = 'https://bandcamp.com/api/fancollection/1/collection_items'

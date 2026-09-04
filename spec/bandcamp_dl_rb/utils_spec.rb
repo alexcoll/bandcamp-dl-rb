@@ -2,7 +2,7 @@
 
 require_relative '../spec_helper'
 
-RSpec.describe BandcampToPlex::Utils do
+RSpec.describe BandcampDlRb::Utils do
   describe '.sanitize_path' do
     it 'replaces forward slashes with dashes' do
       expect(described_class.sanitize_path('AC/DC')).to eq('AC-DC')

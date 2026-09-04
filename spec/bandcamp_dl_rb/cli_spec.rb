@@ -2,7 +2,7 @@
 
 require_relative '../spec_helper'
 
-RSpec.describe BandcampToPlex::CLI do
+RSpec.describe BandcampDlRb::CLI do
   describe '.parse_args' do
     it 'parses library and username' do
       options = described_class.parse_args(['--library', '/mnt/music', 'myuser'])

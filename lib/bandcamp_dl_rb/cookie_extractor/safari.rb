@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module BandcampToPlex
+module BandcampDlRb
   class CookieExtractor
     # Reads the Bandcamp `identity` cookie from the Safari binary cookies file.
     #
@@ -42,7 +42,7 @@ module BandcampToPlex
 
         parse(File.binread(@path))
       rescue StandardError => e
-        BandcampToPlex.log_verbose "  Safari cookie read error: #{e.message}"
+        BandcampDlRb.log_verbose "  Safari cookie read error: #{e.message}"
         nil
       end
 

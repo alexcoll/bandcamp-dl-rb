@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module BandcampToPlex
+module BandcampDlRb
   class CookieExtractor
     # Reads the Bandcamp `identity` cookie from a Netscape-style cookies.txt file.
     class CookiesFile

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module BandcampToPlex
+module BandcampDlRb
   # Thin HTTP client that authenticates to Bandcamp's undocumented collection
   # API using the user's `identity` session cookie.
   class Client
@@ -47,22 +47,22 @@ module BandcampToPlex
       end
       nil
     rescue StandardError => e
-      BandcampToPlex.log_verbose "  Error fetching page data: #{e.message}"
+      BandcampDlRb.log_verbose "  Error fetching page data: #{e.message}"
       nil
     end
 
     def collection_summary
-      resp = post_json(BandcampToPlex::COLLECTION_SUMMARY_URL, {})
+      resp = post_json(BandcampDlRb::COLLECTION_SUMMARY_URL, {})
       return nil unless resp.is_a?(Net::HTTPSuccess)
 
       JSON.parse(resp.body)['collection_summary']
     rescue StandardError => e
-      BandcampToPlex.log "Error fetching collection summary: #{e.message}"
+      BandcampDlRb.log "Error fetching collection summary: #{e.message}"
       nil
     end
 
     def fetch_collection_items(fan_id, last_token, count)
-      resp = post_json(BandcampToPlex::COLLECTION_ITEMS_URL, {
+      resp = post_json(BandcampDlRb::COLLECTION_ITEMS_URL, {
                          'fan_id' => fan_id,
                          'count' => count,
                          'older_than_token' => last_token
@@ -71,12 +71,12 @@ module BandcampToPlex
 
       JSON.parse(resp.body)
     rescue StandardError => e
-      BandcampToPlex.log_verbose "  Error fetching collection items: #{e.message}"
+      BandcampDlRb.log_verbose "  Error fetching collection items: #{e.message}"
       nil
     end
 
     def fetch_hidden_items(fan_id, last_token, count)
-      resp = post_json(BandcampToPlex::HIDDEN_ITEMS_URL, {
+      resp = post_json(BandcampDlRb::HIDDEN_ITEMS_URL, {
                          'fan_id' => fan_id,
                          'count' => count,
                          'older_than_token' => last_token
@@ -85,7 +85,7 @@ module BandcampToPlex
 
       JSON.parse(resp.body)
     rescue StandardError => e
-      BandcampToPlex.log_verbose "  Error fetching hidden items: #{e.message}"
+      BandcampDlRb.log_verbose "  Error fetching hidden items: #{e.message}"
       nil
     end
 
@@ -107,7 +107,7 @@ module BandcampToPlex
     private
 
     def load_pagedata(username)
-      pagedata = get_pagedata(format(BandcampToPlex::USER_URL, username))
+      pagedata = get_pagedata(format(BandcampDlRb::USER_URL, username))
       return nil unless pagedata
       return pagedata if pagedata.key?('collection_count')
 
@@ -205,7 +205,7 @@ module BandcampToPlex
     end
 
     def log(msg)
-      BandcampToPlex.log(msg)
+      BandcampDlRb.log(msg)
     end
   end
 

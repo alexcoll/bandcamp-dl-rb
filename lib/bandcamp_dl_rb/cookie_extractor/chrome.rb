@@ -7,7 +7,7 @@ require 'tmpdir'
 require 'openssl'
 require 'sqlite3'
 
-module BandcampToPlex
+module BandcampDlRb
   class CookieExtractor
     # Reads the Bandcamp `identity` cookie from a Chrome-family browser.
     class Chrome
@@ -48,7 +48,7 @@ module BandcampToPlex
         cipher.iv = "\x20" * 16
         cipher.update(encrypted[3..]) + cipher.final
       rescue OpenSSL::Cipher::CipherError => e
-        BandcampToPlex.log_verbose "  Chrome value decrypt error: #{e.message}"
+        BandcampDlRb.log_verbose "  Chrome value decrypt error: #{e.message}"
         nil
       end
 
@@ -72,7 +72,7 @@ module BandcampToPlex
         value = self.class.decrypt(rows[0][0], decryption_key)
         value if !value.nil? && !value.empty?
       rescue StandardError => e
-        BandcampToPlex.log_verbose "  Chrome cookie read error: #{e.message}"
+        BandcampDlRb.log_verbose "  Chrome cookie read error: #{e.message}"
         FileUtils.rm_f(tmp) if tmp
         nil
       end
@@ -126,7 +126,7 @@ module BandcampToPlex
             linux_key
           end
         rescue StandardError => e
-          BandcampToPlex.log_verbose "  Chrome key retrieval failed: #{e.message}"
+          BandcampDlRb.log_verbose "  Chrome key retrieval failed: #{e.message}"
           nil
         end
 
@@ -159,7 +159,7 @@ module BandcampToPlex
           decoded = encrypted[5..].unpack1('m0')
           decrypt_windows_dpapi(decoded) if !decoded.empty? && defined?(WIN32OLE)
         rescue StandardError => e
-          BandcampToPlex.log_verbose "  Windows Chrome key read error: #{e.message}"
+          BandcampDlRb.log_verbose "  Windows Chrome key read error: #{e.message}"
           nil
         end
 
@@ -169,7 +169,7 @@ module BandcampToPlex
           result = `secret-tool search 'application chrome' 'chrome' 2>&1`.strip
           result[/^\s*value:\s*(.+)$/, 1]
         rescue StandardError => e
-          BandcampToPlex.log_verbose "  Linux Chrome key read error: #{e.message}"
+          BandcampDlRb.log_verbose "  Linux Chrome key read error: #{e.message}"
           nil
         end
 
@@ -185,7 +185,7 @@ module BandcampToPlex
 
           nil
         rescue StandardError => e
-          BandcampToPlex.log_verbose "  Windows DPAPI decrypt error: #{e.message}"
+          BandcampDlRb.log_verbose "  Windows DPAPI decrypt error: #{e.message}"
           nil
         end
       end

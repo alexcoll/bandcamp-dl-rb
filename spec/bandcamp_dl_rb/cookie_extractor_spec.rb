@@ -2,7 +2,7 @@
 
 require_relative '../spec_helper'
 
-RSpec.describe BandcampToPlex::CookieExtractor::CookiesFile do
+RSpec.describe BandcampDlRb::CookieExtractor::CookiesFile do
   describe '.load_from' do
     it 'parses a Netscape cookies.txt file and returns the identity cookie value' do
       content = <<~TXT
@@ -58,7 +58,7 @@ RSpec.describe BandcampToPlex::CookieExtractor::CookiesFile do
   end
 end
 
-RSpec.describe BandcampToPlex::CookieExtractor::Firefox do
+RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
   describe '.profile_dir' do
     after { stub_const('RUBY_PLATFORM', RUBY_PLATFORM) }
 
@@ -140,7 +140,7 @@ RSpec.describe BandcampToPlex::CookieExtractor::Firefox do
   end
 end
 
-RSpec.describe BandcampToPlex::CookieExtractor::Chrome do
+RSpec.describe BandcampDlRb::CookieExtractor::Chrome do
   describe '.local_state_path' do
     after { stub_const('RUBY_PLATFORM', RUBY_PLATFORM) }
 
@@ -263,7 +263,7 @@ RSpec.describe BandcampToPlex::CookieExtractor::Chrome do
   end
 end
 
-RSpec.describe BandcampToPlex::CookieExtractor::Safari do
+RSpec.describe BandcampDlRb::CookieExtractor::Safari do
   # Builds a minimal but byte-correct Cookies.binarycookies payload.
   def build_cookie(url, name, value)
     parts = [cstring(url), cstring(name), cstring('/'), cstring(value)]
@@ -391,38 +391,38 @@ RSpec.describe BandcampToPlex::CookieExtractor::Safari do
   end
 end
 
-RSpec.describe BandcampToPlex::CookieExtractor do
+RSpec.describe BandcampDlRb::CookieExtractor do
   describe '.get_identity_cookie' do
     it 'reads the raw identity cookie value from --cookie-file' do
       expect(described_class.get_identity_cookie('auto', 'my-raw-cookie')).to eq('my-raw-cookie')
     end
 
     it 'reads the cookie from Chrome when browser is set to chrome' do
-      allow(BandcampToPlex::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
+      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
       expect(described_class.get_identity_cookie('chrome')).to eq('chrome-cookie')
     end
 
     it 'reads the cookie from Firefox when browser is set to firefox' do
-      allow(BandcampToPlex::CookieExtractor::Firefox).to receive(:find).and_return('ff-cookie')
+      allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return('ff-cookie')
       expect(described_class.get_identity_cookie('firefox')).to eq('ff-cookie')
     end
 
     it 'reads the cookie from Safari when browser is set to safari' do
-      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return('safari-cookie')
+      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return('safari-cookie')
       expect(described_class.get_identity_cookie('safari')).to eq('safari-cookie')
     end
 
     it 'tries Firefox then Safari then Chrome in auto mode' do
-      allow(BandcampToPlex::CookieExtractor::Firefox).to receive(:find).and_return(nil)
-      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
-      allow(BandcampToPlex::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
+      allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return(nil)
+      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return(nil)
+      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
       expect(described_class.get_identity_cookie('auto')).to eq('chrome-cookie')
     end
 
     it 'returns nil when no cookie source succeeds' do
-      allow(BandcampToPlex::CookieExtractor::Firefox).to receive(:find).and_return(nil)
-      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
-      allow(BandcampToPlex::CookieExtractor::Chrome).to receive(:find).and_return(nil)
+      allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return(nil)
+      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return(nil)
+      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).and_return(nil)
       expect(described_class.get_identity_cookie('auto')).to be_nil
     end
   end
