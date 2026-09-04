@@ -35,7 +35,7 @@ module BandcampDlRb
         case browser_mode.downcase
         when 'firefox' then extract_with('Firefox', -> { Firefox.find })
         when 'safari' then extract_with('Safari', -> { Safari.find })
-        when 'chrome', 'chromium', 'brave', 'edge' then extract_with(browser_mode, -> { Chrome.find })
+        when 'chrome', 'chromium' then extract_with(browser_mode, -> { Chrome.find(browser_mode) })
         when 'auto' then extract_auto
         end
       end

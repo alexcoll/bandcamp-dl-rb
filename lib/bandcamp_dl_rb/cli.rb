@@ -121,7 +121,7 @@ module BandcampDlRb
         opts.separator 'Options:'
         opts.on('-l', '--library PATH', 'Plex library root path (required)') { |v| options[:library] = v }
         opts.on('-f', '--format FORMAT', BandcampDlRb::FORMAT_MAP.keys, 'Audio format (default: flac)') { |v| options[:format] = v }
-        opts.on('-b', '--browser BROWSER', %w[firefox chrome chromium brave edge safari auto],
+        opts.on('-b', '--browser BROWSER', %w[firefox chrome chromium safari auto],
                 'Browser to extract cookies from (default: auto)') { |v| options[:browser] = v }
         opts.on('-c', '--cookie-file PATH', 'Path to cookies.txt file, or raw identity cookie value') do |v|
           options[:cookie_file] = v

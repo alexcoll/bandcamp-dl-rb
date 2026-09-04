@@ -116,14 +116,13 @@ detects the relevant profile directory on every OS.
 | Windows | `%APPDATA%\Mozilla\Firefox\Profiles\`               |
 | Linux   | `~/.mozilla/firefox/`                               |
 
-**Chrome / Chromium / Brave / Edge** cookie database locations (the script
-currently reads the **Google Chrome** paths for all of these):
+**Chrome / Chromium** cookie database locations:
 
-| OS      | Cookie database                                                     |
-|---------|---------------------------------------------------------------------|
-| macOS   | `~/Library/Application Support/Google/Chrome/Default/Network/Cookies` |
-| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Network\Cookies`      |
-| Linux   | `~/.config/google-chrome/Default/Network/Cookies`                     |
+| OS      | Chrome cookie database                                                    | Chromium cookie database                                                    |
+|---------|--------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| macOS   | `~/Library/Application Support/Google/Chrome/Default/Network/Cookies`     | `~/Library/Application Support/Chromium/Default/Network/Cookies`            |
+| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Network\Cookies`         | `%LOCALAPPDATA%\Chromium\User Data\Default\Network\Cookies`                 |
+| Linux   | `~/.config/google-chrome/Default/Network/Cookies`                        | `~/.config/chromium/Default/Network/Cookies`                                |
 
 > **Chrome notes:** Chrome encrypts its cookies with a key in your OS keychain
 > (Keychain on macOS, DPAPI on Windows, a keyring on Linux). The script reads
@@ -145,8 +144,8 @@ currently reads the **Google Chrome** paths for all of these):
 > across all Firefox profiles — if you have several, each is checked until one
 > yields the `identity` cookie.
 
-Use `--browser firefox`, `--browser safari`, or `--browser chrome` to force
-one specifically.
+Use `--browser firefox`, `--browser safari`, `--browser chrome`, or
+`--browser chromium` to force one specifically.
 
 ### Manual (fallback)
 
@@ -190,7 +189,7 @@ Downloads all your Bandcamp purchases and organizes them for Plex.
 |------------------------------|------------------------------------------------------------------|
 | `-l, --library PATH`         | **(required)** Plex library root path                            |
 | `-f, --format FORMAT`        | Download format (default: `flac`)                                |
-| `-b, --browser NAME`         | `firefox`, `safari`, `chrome`, `chromium`, `brave`, `edge`, or `auto` (default: `auto`, tries Firefox then Safari then Chrome [Safari is macOS-only]) |
+| `-b, --browser NAME`         | `firefox`, `safari`, `chrome`, `chromium`, or `auto` (default: `auto`, tries Firefox then Safari then Chrome [Safari is macOS-only]) |
 | `-c, --cookie-file PATH`     | Path to `cookies.txt`, or a raw `identity` cookie value          |
 | `-H, --include-hidden`       | Also download items hidden in your collection                    |
 | `--since DATE`               | Only items purchased on/after `YYYY-MM-DD`                       |
