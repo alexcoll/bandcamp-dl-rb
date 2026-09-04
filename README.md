@@ -3,7 +3,8 @@
 [![CI](https://github.com/alexcoll/bandcamp-dl-rb/actions/workflows/ci.yml/badge.svg)](https://github.com/alexcoll/bandcamp-dl-rb/actions/workflows/ci.yml)
 
 Download all your [Bandcamp](https://bandcamp.com/) purchases (FLAC or the
-highest available quality) and organize them into a Plex-friendly library.
+highest available quality) and organize them into a clean `Artist/Album`
+library.
 
 - **Firefox, Safari, or Chrome** cookie auth (Safari: macOS only)
 - FLAC by default, with automatic fallback through a quality ladder
@@ -24,7 +25,7 @@ highest available quality) and organize them into a Plex-friendly library.
    Safari, or Chrome profile (the same cookie your logged-in browser uses).
 2. Scans your Bandcamp **collection** for all purchased items.
 3. Downloads each as FLAC (or the best format available).
-4. Organizes everything into a Plex-friendly layout:
+4. Organizes everything into a clean layout:
    ```
    <library>/
      <Artist Name>/
@@ -202,14 +203,14 @@ bandcamp_dl_rb --library ~/Music/Bandcamp \
 ```
 bandcamp_dl_rb [options] <bandcamp-username>
 
-Downloads all your Bandcamp purchases and organizes them for Plex.
+Downloads all your Bandcamp purchases and organizes them into a music library.
 ```
 
 ### Options
 
 | Flag                         | Description                                                      |
 |------------------------------|------------------------------------------------------------------|
-| `-l, --library PATH`         | **(required)** Plex library root path                            |
+| `-l, --library PATH`         | **(required)** library root path                            |
 | `-f, --format FORMAT`        | Download format (default: `flac`)                                |
 | `-b, --browser NAME`         | `firefox`, `safari`, `chrome`, `chromium`, or `auto` (default: `auto`, tries Firefox then Safari then Chrome [Safari is macOS-only]) |
 | `-c, --cookie-file PATH`     | Path to `cookies.txt`, or a raw `identity` cookie value          |
@@ -311,8 +312,8 @@ LICENSE                               GPL-3.0
 
 The well-known Bandcamp downloaders are Python ([bandcamp-downloader],
 [bandcampsync]) or Kotlin ([bandcamp-collection-downloader]). This is a
-self-contained Ruby implementation tailored to output directly into a Plex
-library layout.
+self-contained Ruby implementation tailored to output directly into an
+`Artist/Album/track` library layout.
 
 ## Inspiration & attribution
 
