@@ -84,33 +84,58 @@ RSpec.describe BandcampToPlex::CookieExtractor::Firefox do
   end
 
   describe '.find' do
-    it 'returns the identity cookie value from a profile cookies.sqlite' do
-      profile_dir = File.join(Dir.tmpdir, "ff_profiles_#{Process.pid}")
-      FileUtils.mkdir_p(profile_dir)
-      profile = File.join(profile_dir, 'abc.default-release')
-      FileUtils.mkdir_p(profile)
+    let(:profile_dir) { File.join(Dir.tmpdir, "ff_profiles_#{Process.pid}") }
 
+    def build_firefox_profile(profile_dir, profile_name)
+      profile = File.join(profile_dir, profile_name)
+      FileUtils.mkdir_p(profile)
       db = SQLite3::Database.new(File.join(profile, described_class::COOKIE_DB))
       db.execute_batch <<~SQL
         CREATE TABLE moz_cookies (
-          name TEXT, value TEXT, baseDomain TEXT
+          name TEXT, value TEXT, host TEXT
         );
-        INSERT INTO moz_cookies (name, value, baseDomain)
-          VALUES ('identity', 'FF-VALUE-123', 'bandcamp.com');
       SQL
+      db
+    end
+
+    def insert_cookie(db, name:, value:, host:)
+      db.execute('INSERT INTO moz_cookies (name, value, host) VALUES (?, ?, ?)',
+                 [name, value, host])
+    end
+
+    after { FileUtils.rm_rf(profile_dir) if profile_dir && Dir.exist?(profile_dir) }
+
+    it 'returns the identity cookie value from a profile cookies.sqlite' do
+      db = build_firefox_profile(profile_dir, 'abc.default-release')
+      insert_cookie(db, name: 'identity', value: 'FF-VALUE-123', host: '.bandcamp.com')
       db.close
 
       expect(described_class.find(profile_dir)).to eq('FF-VALUE-123')
-    ensure
-      FileUtils.rm_rf(profile_dir) if profile_dir && Dir.exist?(profile_dir)
+    end
+
+    it 'searches multiple profiles and uses the first one with an identity cookie' do
+      first = build_firefox_profile(profile_dir, 'one.default')
+      insert_cookie(first, name: 'session', value: 'x', host: '.example.com')
+      first.close
+
+      second = build_firefox_profile(profile_dir, 'two.default-release')
+      insert_cookie(second, name: 'identity', value: 'FF-VALUE-456', host: '.bandcamp.com')
+      second.close
+
+      expect(described_class.find(profile_dir)).to eq('FF-VALUE-456')
+    end
+
+    it 'ignores identity cookies on hosts other than bandcamp.com' do
+      db = build_firefox_profile(profile_dir, 'abc.default-release')
+      insert_cookie(db, name: 'identity', value: 'OTHER-SITE', host: '.example.com')
+      db.close
+
+      expect(described_class.find(profile_dir)).to be_nil
     end
 
     it 'returns nil when no profile has an identity cookie' do
-      empty_dir = File.join(Dir.tmpdir, "ff_empty_#{Process.pid}")
-      FileUtils.mkdir_p(empty_dir)
-      expect(described_class.find(empty_dir)).to be_nil
-    ensure
-      FileUtils.rm_rf(empty_dir) if empty_dir && Dir.exist?(empty_dir)
+      FileUtils.mkdir_p(profile_dir)
+      expect(described_class.find(profile_dir)).to be_nil
     end
   end
 end

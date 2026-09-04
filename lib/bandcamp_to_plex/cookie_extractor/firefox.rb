@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'sqlite3'
+require 'fileutils'
+require 'tmpdir'
 
 module BandcampToPlex
   class CookieExtractor
@@ -8,7 +10,7 @@ module BandcampToPlex
     class Firefox
       COOKIE_DB = 'cookies.sqlite'
       IDENTITY_SQL = "SELECT value FROM moz_cookies WHERE name = 'identity' " \
-                     "AND baseDomain = 'bandcamp.com' LIMIT 1"
+                     "AND host LIKE '%bandcamp.com%' LIMIT 1"
 
       # Top-level directory containing the Firefox profile folders.
       def self.profile_dir
@@ -58,13 +60,27 @@ module BandcampToPlex
       def read_cookie(cookie_path)
         return nil unless File.exist?(cookie_path)
 
-        db = SQLite3::Database.new(cookie_path, readonly: true)
+        tmp = copy_to_temp(cookie_path)
+        value = query_identity(tmp)
+        FileUtils.rm_f(tmp)
+        present?(value) ? value : nil
+      rescue StandardError => e
+        BandcampToPlex.log_verbose "  Firefox cookie read error: #{e.message}"
+        FileUtils.rm_f(tmp) if tmp
+        nil
+      end
+
+      def copy_to_temp(cookie_path)
+        tmp = File.join(Dir.tmpdir, "bc_firefox_cookies_#{Process.pid}.sqlite")
+        FileUtils.cp(cookie_path, tmp)
+        tmp
+      end
+
+      def query_identity(tmp)
+        db = SQLite3::Database.new(tmp, readonly: true)
         value = db.get_first_value(IDENTITY_SQL)
         db.close
-        present?(value) ? value : nil
-      rescue SQLite3::Exception => e
-        BandcampToPlex.log_verbose "  Firefox cookie read error: #{e.message}"
-        nil
+        value
       end
 
       def present?(value)

@@ -132,9 +132,10 @@ detects the relevant profile directory on every OS.
 > terminal app on, then restart it) or the cookie read is denied with
 > "Operation not permitted".
 >
-> For Firefox, if a running Firefox process is actively using its profile the
-> cookie database may be locked. Close Firefox (or quit it) if auto-detection
-> fails for that reason, or use `--cookie-file`.
+> Firefox keeps `cookies.sqlite` locked (with a WAL file) while it runs, so
+> the script copies the database to a temp file before reading it. This works
+> across all Firefox profiles — if you have several, each is checked until one
+> yields the `identity` cookie.
 
 Use `--browser firefox`, `--browser safari`, or `--browser chrome` to force
 one specifically.
