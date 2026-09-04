@@ -373,16 +373,16 @@ RSpec.describe BandcampToPlex::CookieExtractor do
       expect(described_class.get_identity_cookie('safari')).to eq('safari-cookie')
     end
 
-    it 'tries Safari then Firefox then Chrome in auto mode' do
-      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
+    it 'tries Firefox then Safari then Chrome in auto mode' do
       allow(BandcampToPlex::CookieExtractor::Firefox).to receive(:find).and_return(nil)
+      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
       allow(BandcampToPlex::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
       expect(described_class.get_identity_cookie('auto')).to eq('chrome-cookie')
     end
 
     it 'returns nil when no cookie source succeeds' do
-      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
       allow(BandcampToPlex::CookieExtractor::Firefox).to receive(:find).and_return(nil)
+      allow(BandcampToPlex::CookieExtractor::Safari).to receive(:find).and_return(nil)
       allow(BandcampToPlex::CookieExtractor::Chrome).to receive(:find).and_return(nil)
       expect(described_class.get_identity_cookie('auto')).to be_nil
     end

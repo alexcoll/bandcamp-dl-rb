@@ -110,7 +110,7 @@ module BandcampToPlex
         opts.separator 'Downloads all your Bandcamp purchases and organizes them for Plex.'
         opts.separator ''
         opts.separator 'Authentication:'
-        opts.separator '  The script reads your identity cookie from Firefox or Chrome automatically.'
+        opts.separator '  The script reads your identity cookie from Firefox, Safari, or Chrome automatically (macOS).'
         opts.separator '  If that fails, export your cookies from your browser and use --cookie-file.'
         opts.separator '  Or provide the raw identity cookie value with --cookie-file.'
         opts.separator ''
@@ -147,7 +147,7 @@ module BandcampToPlex
     def print_cookie_error
       @err.puts "\nERROR: Could not find Bandcamp identity cookie."
       @err.puts "\nTo fix this, try one of:"
-      @err.puts '  1. Log in to bandcamp.com in Firefox or Chrome and run this script again.'
+      @err.puts '  1. Log in to bandcamp.com in Firefox, Safari, or Chrome and run this script again.'
       @err.puts "  2. Use a browser extension (e.g., 'Get cookies.txt LOCALLY') to export cookies,"
       @err.puts '     then pass the file with: --cookie-file /path/to/cookies.txt'
       @err.puts "  3. Open DevTools (F12) > Application > Cookies > bandcamp.com, find 'identity',"
