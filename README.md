@@ -1,9 +1,11 @@
 # bandcamp-dl-rb
 
+[![CI](https://github.com/alexcoll/bandcamp-dl-rb/actions/workflows/ci.yml/badge.svg)](https://github.com/alexcoll/bandcamp-dl-rb/actions/workflows/ci.yml)
+
 Download all your [Bandcamp](https://bandcamp.com/) purchases (FLAC or the
 highest available quality) and organize them into a Plex-friendly library.
 
-- **Firefox, Safari, or Chrome** cookie auth (macOS, Windows, Linux; Safari on macOS)
+- **Firefox, Safari, or Chrome** cookie auth (Safari: macOS only)
 - FLAC by default, with automatic fallback through a quality ladder
 - Outputs to a clean `Artist/Album/track` layout
 - Fast re-runs via a small local state file
@@ -114,7 +116,8 @@ detects the relevant profile directory on every OS.
 | Windows | `%APPDATA%\Mozilla\Firefox\Profiles\`               |
 | Linux   | `~/.mozilla/firefox/`                               |
 
-**Chrome / Chromium / Brave / Edge** cookie database locations:
+**Chrome / Chromium / Brave / Edge** cookie database locations (the script
+currently reads the **Google Chrome** paths for all of these):
 
 | OS      | Cookie database                                                     |
 |---------|---------------------------------------------------------------------|
@@ -270,7 +273,8 @@ exe/bandcamp_dl_rb                  Executable entrypoint (CLI.run)
 lib/bandcamp_dl_rb.rb               Loads the library and defines the module/constants
 lib/bandcamp_dl_rb/version.rb       Version constant
 lib/bandcamp_dl_rb/cli.rb           Argument parsing + run loop
-lib/bandcamp_dl_rb/cookie_extractor.rb  Firefox / Chrome cookie extraction + key decrypt
+lib/bandcamp_dl_rb/cookie_extractor.rb  Cookie extraction facade
+lib/bandcamp_dl_rb/cookie_extractor/   Per-browser extractors + cookies.txt parser
 lib/bandcamp_dl_rb/client.rb        HTTP client for the Bandcamp collection API
 lib/bandcamp_dl_rb/downloader.rb    Download + unzip + Artist/Album layout logic
 lib/bandcamp_dl_rb/utils.rb         Path sanitization helpers
