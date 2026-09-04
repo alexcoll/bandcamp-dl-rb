@@ -9,6 +9,11 @@ highest available quality) and organize them into a Plex-friendly library.
 - Fast re-runs via a small local state file
 - Cross-platform: macOS, Windows, Linux
 
+> **Testing status:** only **macOS with Firefox and Safari** has been
+> exercised so far. The Chrome extractor and the Windows/Linux profile paths
+> are implemented but untested — please open an issue if something doesn't
+> work on your setup.
+
 ---
 
 ## What it does
