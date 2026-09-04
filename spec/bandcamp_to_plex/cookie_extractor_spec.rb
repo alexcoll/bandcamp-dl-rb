@@ -287,10 +287,24 @@ RSpec.describe BandcampToPlex::CookieExtractor::Safari do
   describe '.cookies_path' do
     after { allow(Dir).to receive(:home).and_return(Dir.home) }
 
-    it 'points at the default macOS cookies file under the home Library/Cookies dir' do
+    it 'prefers the sandboxed container path when it exists (macOS Monterey+)' do
       allow(Dir).to receive(:home).and_return('/Users/test')
-      expect(described_class.cookies_path)
-        .to eq('/Users/test/Library/Cookies/Cookies.binarycookies')
+      modern = '/Users/test/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies'
+      legacy = '/Users/test/Library/Cookies/Cookies.binarycookies'
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(modern).and_return(true)
+      allow(File).to receive(:exist?).with(legacy).and_return(false)
+      expect(described_class.cookies_path).to eq(modern)
+    end
+
+    it 'falls back to the legacy Library/Cookies path otherwise' do
+      allow(Dir).to receive(:home).and_return('/Users/test')
+      modern = '/Users/test/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies'
+      legacy = '/Users/test/Library/Cookies/Cookies.binarycookies'
+      allow(File).to receive(:exist?).and_call_original
+      allow(File).to receive(:exist?).with(modern).and_return(false)
+      allow(File).to receive(:exist?).with(legacy).and_return(false)
+      expect(described_class.cookies_path).to eq(legacy)
     end
   end
 

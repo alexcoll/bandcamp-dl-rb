@@ -11,6 +11,8 @@ module BandcampToPlex
       MAGIC = 'cook'
       IDENTITY = 'identity'
       HOST_HINT = 'bandcamp.com'
+      MODERN_CONTAINER = 'Library/Containers/com.apple.Safari/Data/Library/Cookies'
+      LEGACY_PATH = 'Library/Cookies'
 
       # Returns the identity cookie value, or nil if none is found.
       def self.find(path = nil)
@@ -18,8 +20,17 @@ module BandcampToPlex
       end
 
       # Returns the path to the default macOS Safari cookies file.
+      #
+      # Safari was historically bundled into ~/Library/Cookies, but on macOS
+      # Monterey+ it is sandboxed and the file lives under the app container at
+      # ~/Library/Containers/com.apple.Safari/Data/... The first candidate that
+      # exists is returned so both layouts are supported.
       def self.cookies_path
-        File.join(Dir.home, 'Library/Cookies', COOKIES_FILE)
+        [MODERN_CONTAINER, LEGACY_PATH].each do |dir|
+          candidate = File.join(Dir.home, dir, COOKIES_FILE)
+          return candidate if File.exist?(candidate)
+        end
+        File.join(Dir.home, LEGACY_PATH, COOKIES_FILE)
       end
 
       def initialize(path = nil)
@@ -57,12 +68,22 @@ module BandcampToPlex
 
       def extract_pages(data, num_pages)
         return [] if num_pages.zero?
-        return [] unless valid_page_offsets?(data, num_pages)
 
-        (0...num_pages).map do |i|
-          offset = data[8 + (i * 4), 4].unpack1('N')
-          data[offset, 8].nil? ? nil : offset
-        end.compact
+        sizes = read_page_sizes(data, num_pages)
+        return [] if sizes.any?(&:nil?)
+
+        compute_page_offsets(sizes).select { |o| data[o, 8] }
+      end
+
+      def read_page_sizes(data, num_pages)
+        (0...num_pages).map { |i| data[8 + (i * 4), 4]&.unpack1('N') }
+      end
+
+      def compute_page_offsets(sizes)
+        first = 8 + (sizes.length * 4)
+        offsets = [first]
+        sizes.first(sizes.length - 1).each { |size| offsets << (offsets.last + size) }
+        offsets
       end
 
       def extract_cookies(data, page_start)
@@ -76,11 +97,6 @@ module BandcampToPlex
           rel = page[8 + (i * 4), 4].unpack1('V')
           parse_cookie(data, page_start + rel)
         end.compact
-      end
-
-      def valid_page_offsets?(data, num_pages)
-        head = 8 + (num_pages * 4)
-        head <= data.bytesize
       end
 
       def parse_cookie(data, start)
