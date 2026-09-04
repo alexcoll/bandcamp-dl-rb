@@ -164,6 +164,20 @@ RSpec.describe BandcampDlRb::CookieExtractor::Chrome do
       expect(described_class.local_state_path)
         .to eq('/home/test/.config/google-chrome/Local State')
     end
+
+    it 'uses the Chromium Application Support path on macOS' do
+      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
+      allow(Dir).to receive(:home).and_return('/Users/test')
+      expect(described_class.local_state_path('chromium'))
+        .to eq('/Users/test/Library/Application Support/Chromium/Local State')
+    end
+
+    it 'uses ~/.config/chromium on Linux' do
+      stub_const('RUBY_PLATFORM', 'x86_64-linux')
+      allow(Dir).to receive(:home).and_return('/home/test')
+      expect(described_class.local_state_path('chromium'))
+        .to eq('/home/test/.config/chromium/Local State')
+    end
   end
 
   describe '.cookie_db_paths' do
@@ -189,6 +203,14 @@ RSpec.describe BandcampDlRb::CookieExtractor::Chrome do
       allow(Dir).to receive(:home).and_return('/home/test')
       paths = described_class.cookie_db_paths
       expect(paths).to include('/home/test/.config/google-chrome/Default/Network/Cookies')
+    end
+
+    it 'lists the Chromium cookie DBs on macOS' do
+      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
+      allow(Dir).to receive(:home).and_return('/Users/test')
+      paths = described_class.cookie_db_paths('chromium')
+      expect(paths).to include('/Users/test/Library/Application Support/Chromium/Default/Network/Cookies')
+      expect(paths).to include('/Users/test/Library/Application Support/Chromium/Default/Cookies')
     end
   end
 
@@ -241,7 +263,7 @@ RSpec.describe BandcampDlRb::CookieExtractor::Chrome do
       )
       db.close
 
-      expect(described_class.find(cookie_db, key)).to eq(plaintext)
+      expect(described_class.find('chrome', cookie_db, key)).to eq(plaintext)
     ensure
       FileUtils.rm_f(cookie_db) if cookie_db && File.exist?(cookie_db)
     end
@@ -256,7 +278,7 @@ RSpec.describe BandcampDlRb::CookieExtractor::Chrome do
       SQL
       db.close
 
-      expect(described_class.find(empty_db, key)).to be_nil
+      expect(described_class.find('chrome', empty_db, key)).to be_nil
     ensure
       FileUtils.rm_f(empty_db) if empty_db && File.exist?(empty_db)
     end
@@ -398,8 +420,13 @@ RSpec.describe BandcampDlRb::CookieExtractor do
     end
 
     it 'reads the cookie from Chrome when browser is set to chrome' do
-      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
+      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).with('chrome').and_return('chrome-cookie')
       expect(described_class.get_identity_cookie('chrome')).to eq('chrome-cookie')
+    end
+
+    it 'reads the cookie from Chromium when browser is set to chromium' do
+      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).with('chromium').and_return('chromium-cookie')
+      expect(described_class.get_identity_cookie('chromium')).to eq('chromium-cookie')
     end
 
     it 'reads the cookie from Firefox when browser is set to firefox' do

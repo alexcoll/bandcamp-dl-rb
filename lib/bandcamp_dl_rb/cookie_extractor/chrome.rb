@@ -16,13 +16,30 @@ module BandcampDlRb
       LEGACY_DB_RELATIVE = 'Cookies'
       IDENTITY_SQL = "SELECT encrypted_value FROM cookies WHERE name = 'identity' " \
                      "AND host_key LIKE '%bandcamp.com%' LIMIT 1"
+      BROWSER_DIRS = {
+        'chrome' => {
+          darwin: ['Library', 'Application Support', 'Google', 'Chrome'],
+          windows: ['Google', 'Chrome', 'User Data'],
+          linux: ['.config', 'google-chrome']
+        },
+        'chromium' => {
+          darwin: ['Library', 'Application Support', 'Chromium'],
+          windows: ['Chromium', 'User Data'],
+          linux: ['.config', 'chromium']
+        }
+      }.freeze
+      KEYRING_LABELS = {
+        'chrome' => { macos_service: 'Chrome Safe Storage', macos_account: 'Chrome', linux_app: 'chrome' },
+        'chromium' => { macos_service: 'Chromium Safe Storage', macos_account: 'Chromium', linux_app: 'chromium' }
+      }.freeze
 
       # Returns the identity cookie value, or nil if none is found.
-      def self.find(db_path = nil, key = nil)
-        new(db_path, key).find
+      def self.find(browser = 'chrome', db_path = nil, key = nil)
+        new(browser, db_path, key).find
       end
 
-      def initialize(db_path = nil, key = nil)
+      def initialize(browser = 'chrome', db_path = nil, key = nil)
+        @browser = browser
         @db_path = db_path
         @provided_key = key
       end
@@ -55,11 +72,11 @@ module BandcampDlRb
       private
 
       def paths
-        @db_path ? [@db_path] : self.class.cookie_db_paths
+        @db_path ? [@db_path] : self.class.cookie_db_paths(@browser)
       end
 
       def key
-        @provided_key || self.class.retrieve_key
+        @provided_key || self.class.retrieve_key(@browser)
       end
 
       def read_cookie(cookie_path, decryption_key)
@@ -91,39 +108,22 @@ module BandcampDlRb
       end
 
       class << self
-        def local_state_path
-          case RUBY_PLATFORM
-          when /darwin/
-            File.join(Dir.home, 'Library/Application Support/Google/Chrome', LOCAL_STATE_RELATIVE)
-          when /mswin|mingw|cygwin/
-            File.join(ENV['LOCALAPPDATA'].to_s, 'Google', 'Chrome', 'User Data', LOCAL_STATE_RELATIVE)
-          else
-            File.join(Dir.home, '.config/google-chrome', LOCAL_STATE_RELATIVE)
-          end
+        def local_state_path(browser = 'chrome')
+          File.join(*browser_base_path(browser), LOCAL_STATE_RELATIVE)
         end
 
-        def cookie_db_paths
-          case RUBY_PLATFORM
-          when /darwin/
-            base = File.join(Dir.home, 'Library/Application Support/Google/Chrome')
-            db_relative_paths(base, %w[Default Profile 1])
-          when /mswin|mingw|cygwin/
-            base = File.join(ENV['LOCALAPPDATA'].to_s, 'Google', 'Chrome', 'User Data')
-            db_relative_paths(base, %w[Default])
-          else
-            base = File.join(Dir.home, '.config/google-chrome')
-            db_relative_paths(base, %w[Default Profile 1])
-          end
+        def cookie_db_paths(browser = 'chrome')
+          db_relative_paths(browser_base_path(browser), cookie_profiles)
         end
 
-        def retrieve_key
+        def retrieve_key(browser = 'chrome')
           case RUBY_PLATFORM
           when /darwin/
-            macos_key
+            macos_key(browser)
           when /mswin|mingw|cygwin/
-            windows_key
+            windows_key(browser)
           else
-            linux_key
+            linux_key(browser)
           end
         rescue StandardError => e
           BandcampDlRb.log_verbose "  Chrome key retrieval failed: #{e.message}"
@@ -132,6 +132,27 @@ module BandcampDlRb
 
         private
 
+        def browser_base_path(browser)
+          dirs = BROWSER_DIRS.fetch(browser)
+          case RUBY_PLATFORM
+          when /darwin/
+            File.join(Dir.home, *dirs[:darwin])
+          when /mswin|mingw|cygwin/
+            File.join(ENV['LOCALAPPDATA'].to_s, *dirs[:windows])
+          else
+            File.join(Dir.home, *dirs[:linux])
+          end
+        end
+
+        def cookie_profiles
+          case RUBY_PLATFORM
+          when /mswin|mingw|cygwin/
+            %w[Default]
+          else
+            %w[Default Profile 1]
+          end
+        end
+
         def db_relative_paths(base, profiles)
           profiles.flat_map do |profile|
             [File.join(base, profile, SAFE_STORAGE_DB_RELATIVE),
@@ -139,17 +160,20 @@ module BandcampDlRb
           end
         end
 
-        def macos_key
+        def macos_key(browser)
+          labels = KEYRING_LABELS.fetch(browser)
           return nil unless system('which security > /dev/null 2>&1')
 
-          result = `/usr/bin/security find-generic-password -s 'Chrome Safe Storage' -a 'Chrome' -w 2>&1`.strip
+          cmd = "/usr/bin/security find-generic-password -s '#{labels[:macos_service]}' " \
+                "-a '#{labels[:macos_account]}' -w 2>&1"
+          result = `#{cmd}`.strip
           return nil unless $CHILD_STATUS.success? && !result.empty?
 
           result
         end
 
-        def windows_key
-          local_state = local_state_path
+        def windows_key(browser)
+          local_state = local_state_path(browser)
           return nil unless File.exist?(local_state)
 
           json = JSON.parse(File.read(local_state))
@@ -163,10 +187,11 @@ module BandcampDlRb
           nil
         end
 
-        def linux_key
+        def linux_key(browser)
+          labels = KEYRING_LABELS.fetch(browser)
           return nil unless system('which secret-tool > /dev/null 2>&1')
 
-          result = `secret-tool search 'application chrome' 'chrome' 2>&1`.strip
+          result = `secret-tool search 'application #{labels[:linux_app]}' '#{labels[:linux_app]}' 2>&1`.strip
           result[/^\s*value:\s*(.+)$/, 1]
         rescue StandardError => e
           BandcampDlRb.log_verbose "  Linux Chrome key read error: #{e.message}"

@@ -1,13 +1,20 @@
 # bandcamp-dl-rb
 
+[![CI](https://github.com/alexcoll/bandcamp-dl-rb/actions/workflows/ci.yml/badge.svg)](https://github.com/alexcoll/bandcamp-dl-rb/actions/workflows/ci.yml)
+
 Download all your [Bandcamp](https://bandcamp.com/) purchases (FLAC or the
 highest available quality) and organize them into a Plex-friendly library.
 
-- **Firefox, Safari, or Chrome** cookie auth (macOS, Windows, Linux; Safari on macOS)
+- **Firefox, Safari, or Chrome** cookie auth (Safari: macOS only)
 - FLAC by default, with automatic fallback through a quality ladder
 - Outputs to a clean `Artist/Album/track` layout
 - Fast re-runs via a small local state file
 - Cross-platform: macOS, Windows, Linux
+
+> **Testing status:** only **macOS with Firefox and Safari** has been
+> exercised so far. The Chrome extractor and the Windows/Linux profile paths
+> are implemented but untested — please open an issue if something doesn't
+> work on your setup.
 
 ---
 
@@ -109,13 +116,13 @@ detects the relevant profile directory on every OS.
 | Windows | `%APPDATA%\Mozilla\Firefox\Profiles\`               |
 | Linux   | `~/.mozilla/firefox/`                               |
 
-**Chrome / Chromium / Brave / Edge** cookie database locations:
+**Chrome / Chromium** cookie database locations:
 
-| OS      | Cookie database                                                     |
-|---------|---------------------------------------------------------------------|
-| macOS   | `~/Library/Application Support/Google/Chrome/Default/Network/Cookies` |
-| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Network\Cookies`      |
-| Linux   | `~/.config/google-chrome/Default/Network/Cookies`                     |
+| OS      | Chrome cookie database                                                    | Chromium cookie database                                                    |
+|---------|--------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| macOS   | `~/Library/Application Support/Google/Chrome/Default/Network/Cookies`     | `~/Library/Application Support/Chromium/Default/Network/Cookies`            |
+| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Network\Cookies`         | `%LOCALAPPDATA%\Chromium\User Data\Default\Network\Cookies`                 |
+| Linux   | `~/.config/google-chrome/Default/Network/Cookies`                        | `~/.config/chromium/Default/Network/Cookies`                                |
 
 > **Chrome notes:** Chrome encrypts its cookies with a key in your OS keychain
 > (Keychain on macOS, DPAPI on Windows, a keyring on Linux). The script reads
@@ -137,8 +144,8 @@ detects the relevant profile directory on every OS.
 > across all Firefox profiles — if you have several, each is checked until one
 > yields the `identity` cookie.
 
-Use `--browser firefox`, `--browser safari`, or `--browser chrome` to force
-one specifically.
+Use `--browser firefox`, `--browser safari`, `--browser chrome`, or
+`--browser chromium` to force one specifically.
 
 ### Manual (fallback)
 
@@ -182,7 +189,7 @@ Downloads all your Bandcamp purchases and organizes them for Plex.
 |------------------------------|------------------------------------------------------------------|
 | `-l, --library PATH`         | **(required)** Plex library root path                            |
 | `-f, --format FORMAT`        | Download format (default: `flac`)                                |
-| `-b, --browser NAME`         | `firefox`, `safari`, `chrome`, `chromium`, `brave`, `edge`, or `auto` (default: `auto`, tries Firefox then Safari then Chrome [Safari is macOS-only]) |
+| `-b, --browser NAME`         | `firefox`, `safari`, `chrome`, `chromium`, or `auto` (default: `auto`, tries Firefox then Safari then Chrome [Safari is macOS-only]) |
 | `-c, --cookie-file PATH`     | Path to `cookies.txt`, or a raw `identity` cookie value          |
 | `-H, --include-hidden`       | Also download items hidden in your collection                    |
 | `--since DATE`               | Only items purchased on/after `YYYY-MM-DD`                       |
@@ -265,7 +272,8 @@ exe/bandcamp_dl_rb                  Executable entrypoint (CLI.run)
 lib/bandcamp_dl_rb.rb               Loads the library and defines the module/constants
 lib/bandcamp_dl_rb/version.rb       Version constant
 lib/bandcamp_dl_rb/cli.rb           Argument parsing + run loop
-lib/bandcamp_dl_rb/cookie_extractor.rb  Firefox / Chrome cookie extraction + key decrypt
+lib/bandcamp_dl_rb/cookie_extractor.rb  Cookie extraction facade
+lib/bandcamp_dl_rb/cookie_extractor/   Per-browser extractors + cookies.txt parser
 lib/bandcamp_dl_rb/client.rb        HTTP client for the Bandcamp collection API
 lib/bandcamp_dl_rb/downloader.rb    Download + unzip + Artist/Album layout logic
 lib/bandcamp_dl_rb/utils.rb         Path sanitization helpers
