@@ -41,15 +41,21 @@ highest available quality) and organize them into a Plex-friendly library.
 - **Ruby** 3.1 or newer
 - **Bundler** (optional, but recommended)
 
-### Run from a checkout
+### Install with Homebrew
 
 ```bash
-git clone https://github.com/alexcoll/bandcamp-dl-rb
-cd bandcamp-dl-rb
-bundle install
+brew tap alexcoll/tap
+brew install bandcamp-dl-rb
 
-# Run it directly from the repo
-bundle exec ruby exe/bandcamp_dl_rb --help
+# The `bandcamp_dl_rb` command is then on your PATH
+bandcamp_dl_rb --help
+```
+
+Updating later:
+
+```bash
+brew update
+brew upgrade bandcamp-dl-rb
 ```
 
 ### Install as a gem
@@ -62,11 +68,27 @@ gem install bandcamp-dl-rb-*.gem
 bandcamp_dl_rb --help
 ```
 
+### Run from a checkout
+
+```bash
+git clone https://github.com/alexcoll/bandcamp-dl-rb
+cd bandcamp-dl-rb
+bundle install
+
+# Run it directly from the repo
+bundle exec ruby exe/bandcamp_dl_rb --help
+```
+
 | Gem        | Used for                                       |
 |------------|------------------------------------------------|
 | `rubyzip`  | Extracting album zip archives                  |
 | `sqlite3`  | Reading the Firefox / Chrome cookie databases  |
 | `rspec`    | Only needed to run the tests                   |
+
+> **Homebrew install:** the `alexcoll/tap` formula installs the gem (and its
+> dependencies) into an isolated keg under Homebrew's Ruby, building the
+> `sqlite3` native extension during `brew install`. A separate Ruby/Bundler
+> setup isn't needed.
 
 ---
 
