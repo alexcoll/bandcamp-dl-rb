@@ -123,8 +123,14 @@ detects the relevant profile directory on every OS.
 > login keychain), use `--cookie-file` as a fallback.
 >
 > **Safari (macOS only):** Safari stores cookies in a macOS-specific binary
-> file. The script reads it in plaintext (no decryption needed) from
-> `~/Library/Cookies/Cookies.binarycookies`.
+> file. The script reads it in plaintext (no decryption needed) from the
+> sandboxed container at
+> `~/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies`
+> (on older macOS, `~/Library/Cookies/...`). Because this path is protected by
+> macOS privacy controls, the terminal must be granted **Full Disk Access**
+> (System Settings → Privacy & Security → Full Disk Access, toggle your
+> terminal app on, then restart it) or the cookie read is denied with
+> "Operation not permitted".
 >
 > For Firefox, if a running Firefox process is actively using its profile the
 > cookie database may be locked. Close Firefox (or quit it) if auto-detection
