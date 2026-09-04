@@ -7,7 +7,7 @@ require 'bandcamp_to_plex/cookie_extractor/cookies_file'
 
 module BandcampToPlex
   # Orchestrates extraction of the Bandcamp `identity` cookie from the user's
-  # browser (Firefox, Chrome, or Safari), a cookies.txt file, or a raw cookie
+  # browser (Firefox, Safari, or Chrome), a cookies.txt file, or a raw cookie
   # value, delegating the source-specific work to collaborator classes.
   class CookieExtractor
     class << self
@@ -48,12 +48,12 @@ module BandcampToPlex
       end
 
       def extract_auto
-        BandcampToPlex.log 'Trying Safari...'
-        value = Safari.find
-        return value if value
-
         BandcampToPlex.log 'Trying Firefox...'
         value = Firefox.find
+        return value if value
+
+        BandcampToPlex.log 'Trying Safari...'
+        value = Safari.find
         return value if value
 
         BandcampToPlex.log 'Trying Chrome...'

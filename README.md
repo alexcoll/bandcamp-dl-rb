@@ -3,7 +3,7 @@
 Download all your [Bandcamp](https://bandcamp.com/) purchases (FLAC or the
 highest available quality) and organize them into a Plex-friendly library.
 
-- **Firefox or Chrome** cookie auth (macOS, Windows, Linux)
+- **Firefox, Safari, or Chrome** cookie auth (macOS, Windows, Linux; Safari on macOS)
 - FLAC by default, with automatic fallback through a quality ladder
 - Outputs to a clean `Artist/Album/track` layout
 - Fast re-runs via a small local state file
@@ -13,8 +13,8 @@ highest available quality) and organize them into a Plex-friendly library.
 
 ## What it does
 
-1. Reads your Bandcamp **`identity` session cookie** from your local Firefox or
-   Chrome profile (the same cookie your logged-in browser uses).
+1. Reads your Bandcamp **`identity` session cookie** from your local Firefox,
+   Safari, or Chrome profile (the same cookie your logged-in browser uses).
 2. Scans your Bandcamp **collection** for all purchased items.
 3. Downloads each as FLAC (or the best format available).
 4. Organizes everything into a Plex-friendly layout:
@@ -79,12 +79,13 @@ You'll pass `yourname` as the final argument.
 ## Quick start
 
 ```bash
-# With a Firefox or Chrome profile already logged into bandcamp.com
+# With a Firefox, Safari, or Chrome profile already logged into bandcamp.com
 bandcamp_to_plex --library ~/Music/Bandcamp yourname
 ```
 
-That's it — the script finds your `identity` cookie in Firefox, downloads
-your collection as FLAC, and files it under `~/Music/Bandcamp/<Artist>/<Album>/`.
+That's it — the script finds your `identity` cookie in Firefox (then Safari,
+then Chrome), downloads your collection as FLAC, and files it under
+`~/Music/Bandcamp/<Artist>/<Album>/`.
 
 ---
 
@@ -95,10 +96,10 @@ public download endpoint. This tool uses the same **undocumented
 `/api/fancollection/*` endpoints** the website does, authenticated with your
 session `identity` cookie.
 
-### Automatic (Firefox or Chrome)
+### Automatic (Firefox, Safari, or Chrome)
 
-By default the script tries Firefox first, then Chrome, and detects the
-relevant profile directory on every OS.
+By default the script tries Firefox first, then Safari, then Chrome, and
+detects the relevant profile directory on every OS.
 
 **Firefox** profile directories:
 
@@ -121,11 +122,16 @@ relevant profile directory on every OS.
 > that key automatically when possible. If it cannot (e.g. an unsupported
 > login keychain), use `--cookie-file` as a fallback.
 >
+> **Safari (macOS only):** Safari stores cookies in a macOS-specific binary
+> file. The script reads it in plaintext (no decryption needed) from
+> `~/Library/Cookies/Cookies.binarycookies`.
+>
 > For Firefox, if a running Firefox process is actively using its profile the
 > cookie database may be locked. Close Firefox (or quit it) if auto-detection
 > fails for that reason, or use `--cookie-file`.
 
-Use `--browser firefox` or `--browser chrome` to force one specifically.
+Use `--browser firefox`, `--browser safari`, or `--browser chrome` to force
+one specifically.
 
 ### Manual (fallback)
 
@@ -169,7 +175,7 @@ Downloads all your Bandcamp purchases and organizes them for Plex.
 |------------------------------|------------------------------------------------------------------|
 | `-l, --library PATH`         | **(required)** Plex library root path                            |
 | `-f, --format FORMAT`        | Download format (default: `flac`)                                |
-| `-b, --browser NAME`         | `firefox`, `chrome`, `chromium`, `brave`, `edge`, or `auto` (default: `auto`, tries Firefox then Chrome) |
+| `-b, --browser NAME`         | `firefox`, `safari`, `chrome`, `chromium`, `brave`, `edge`, or `auto` (default: `auto`, tries Firefox then Safari then Chrome [Safari is macOS-only]) |
 | `-c, --cookie-file PATH`     | Path to `cookies.txt`, or a raw `identity` cookie value          |
 | `-H, --include-hidden`       | Also download items hidden in your collection                    |
 | `--since DATE`               | Only items purchased on/after `YYYY-MM-DD`                       |

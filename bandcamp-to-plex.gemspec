@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary = 'Download your Bandcamp purchases and organize them for a Plex library'
   spec.description = 'Authenticates to Bandcamp with your browser identity cookie ' \
-                     '(Firefox or Chrome), scans your collection, and downloads each ' \
+                     '(Firefox, Safari, or Chrome), scans your collection, and downloads each ' \
                      'purchase into a Plex-friendly <Artist>/<Album>/track layout.'
   spec.homepage = 'https://github.com/alexcoll/bandcamp-to-plex'
   spec.license = 'GPL-3.0-only'
