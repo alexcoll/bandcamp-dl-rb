@@ -16,6 +16,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set version from tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed "s/VERSION = '.*'/VERSION = '$version'/" lib/bandcamp_dl_rb/version.rb > version.tmp
+          mv version.tmp lib/bandcamp_dl_rb/version.rb
+
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -33,3 +39,15 @@ jobs:
         with:
           files: bandcamp-dl-rb-*.gem
           generate_release_notes: true
+
+      - name: Trigger Homebrew tap formula bump
+        if: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer $TAP_GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/alexcoll/homebrew-tap/dispatches \
+            -d '{"event_type":"formula-bump"}'
