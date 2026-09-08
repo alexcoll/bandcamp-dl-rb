@@ -54,4 +54,48 @@ RSpec.describe BandcampDlRb::CLI do
       expect(code).to eq(1)
     end
   end
+
+  describe '#print_dry_run' do
+    it 'prints each item with its size and the total size' do
+      cli = described_class.new(out: StringIO.new, err: StringIO.new)
+      items = {
+        'a1' => { 'band_name' => 'Radiohead', 'item_title' => 'Kid A',
+                  'redownload_url' => 'https://bandcamp.com/redownload/1' },
+        'a2' => { 'band_name' => 'Radiohead', 'item_title' => 'Amnesiac',
+                  'redownload_url' => 'https://bandcamp.com/redownload/2' }
+      }
+      allow(cli).to receive(:download_size_for).and_return(1_200_000, 800_000)
+
+      expect { cli.send(:print_dry_run, double('client'), items, 'flac') }.to output(
+        <<~OUT
+          \n--- Dry Run ---
+            Radiohead - Kid A (1.1 MB)
+            Radiohead - Amnesiac (781.2 KB)
+
+          Total: 2 items, 1.9 MB would be downloaded
+        OUT
+      ).to_stderr
+    end
+
+    it 'marks unknown sizes and sums only known ones' do
+      cli = described_class.new(out: StringIO.new, err: StringIO.new)
+      items = {
+        'a1' => { 'band_name' => 'Artist', 'item_title' => 'Album',
+                  'redownload_url' => 'https://bandcamp.com/redownload/1' },
+        'a2' => { 'band_name' => 'Artist', 'item_title' => 'Mystery',
+                  'redownload_url' => 'https://bandcamp.com/redownload/2' }
+      }
+      allow(cli).to receive(:download_size_for).and_return(1_200_000, nil)
+
+      expect { cli.send(:print_dry_run, double('client'), items, 'flac') }.to output(
+        <<~OUT
+          \n--- Dry Run ---
+            Artist - Album (1.1 MB)
+            Artist - Mystery (unknown size)
+
+          Total: 2 items, 1.1 MB (+1 unknown) would be downloaded
+        OUT
+      ).to_stderr
+    end
+  end
 end

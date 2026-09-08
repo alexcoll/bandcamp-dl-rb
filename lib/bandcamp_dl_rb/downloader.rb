@@ -38,6 +38,35 @@ module BandcampDlRb
       nil
     end
 
+    # Determines the byte size of a remote download without saving it, by
+    # issuing a HEAD request and following redirects. Returns nil when the
+    # size cannot be determined.
+    def self.download_size(client, url, max_redirects: 5)
+      max_redirects.times do
+        resp = perform_size_check(client, url)
+        return nil unless resp
+
+        return resp['content-length']&.to_i if success_response?(resp)
+        return nil unless redirect_to?(resp)
+
+        url = resp['location']
+      end
+      nil
+    end
+
+    def self.perform_size_check(client, url)
+      uri = URI.parse(url)
+      Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 30, read_timeout: 60) do |http|
+        req = Net::HTTP::Head.new(uri)
+        req['Cookie'] = "identity=#{client.identity}"
+        req['User-Agent'] = USER_AGENT
+        http.request(req)
+      end
+    rescue StandardError => e
+      BandcampDlRb.log_verbose "    Size check error: #{e.message}"
+      nil
+    end
+
     def self.redirect_to?(resp)
       resp.is_a?(Net::HTTPRedirection) && resp['location']
     end

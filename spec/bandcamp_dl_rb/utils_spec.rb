@@ -28,4 +28,30 @@ RSpec.describe BandcampDlRb::Utils do
       expect(described_class.sanitize_path('')).to eq('')
     end
   end
+
+  describe '.human_size' do
+    it 'formats zero as 0 B' do
+      expect(described_class.human_size(0)).to eq('0 B')
+    end
+
+    it 'formats nil as 0 B' do
+      expect(described_class.human_size(nil)).to eq('0 B')
+    end
+
+    it 'formats bytes' do
+      expect(described_class.human_size(512)).to eq('512.0 B')
+    end
+
+    it 'formats kilobytes' do
+      expect(described_class.human_size(800_000)).to eq('781.2 KB')
+    end
+
+    it 'formats megabytes' do
+      expect(described_class.human_size(1_200_000)).to eq('1.1 MB')
+    end
+
+    it 'formats gigabytes' do
+      expect(described_class.human_size(1_073_741_824)).to eq('1.0 GB')
+    end
+  end
 end
