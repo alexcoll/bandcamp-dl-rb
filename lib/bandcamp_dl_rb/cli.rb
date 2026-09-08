@@ -182,7 +182,7 @@ module BandcampDlRb
       download = Downloader.get_download_url(client, item['redownload_url'], format)
       return nil unless download
 
-      Downloader.download_size(client, download[:url])
+      Downloader.size_bytes(download) || Downloader.download_size(client, download[:url])
     end
 
     def download_items(client, items, options)
