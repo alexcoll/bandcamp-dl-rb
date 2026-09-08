@@ -11,8 +11,8 @@ RSpec.describe BandcampDlRb::Downloader do
         'download_items' => [
           {
             'downloads' => {
-              'flac' => { 'url' => 'https://bcbits/flac.zip' },
-              'mp3-320' => { 'url' => 'https://bcbits/mp3.zip' }
+              'flac' => { 'url' => 'https://bcbits/flac.zip', 'size_mb' => '1.2GB' },
+              'mp3-320' => { 'url' => 'https://bcbits/mp3.zip', 'size_mb' => '250MB' }
             }
           }
         ]
@@ -23,14 +23,14 @@ RSpec.describe BandcampDlRb::Downloader do
       allow(client).to receive(:get_pagedata).and_return(pagedata)
     end
 
-    it 'returns the requested format url' do
+    it 'returns the requested format url and size' do
       result = described_class.get_download_url(client, 'https://bandcamp.com/foo', 'flac')
-      expect(result).to eq(url: 'https://bcbits/flac.zip', format: 'flac')
+      expect(result).to eq(url: 'https://bcbits/flac.zip', format: 'flac', size_mb: '1.2GB')
     end
 
     it 'falls back to flac when requesting a missing format' do
       result = described_class.get_download_url(client, 'https://bandcamp.com/foo', 'wav')
-      expect(result).to eq(url: 'https://bcbits/flac.zip', format: 'flac')
+      expect(result).to eq(url: 'https://bcbits/flac.zip', format: 'flac', size_mb: '1.2GB')
     end
 
     it 'returns nil when no format is available' do
@@ -42,6 +42,28 @@ RSpec.describe BandcampDlRb::Downloader do
     it 'returns nil when pagedata has no download items' do
       allow(client).to receive(:get_pagedata).and_return('download_items' => [])
       expect(described_class.get_download_url(client, 'https://bandcamp.com/foo', 'flac')).to be_nil
+    end
+  end
+
+  describe '.size_bytes' do
+    it 'parses megabytes' do
+      expect(described_class.size_bytes(size_mb: '495.5MB')).to eq((495.5 * 1024 * 1024).to_i)
+    end
+
+    it 'parses gigabytes' do
+      expect(described_class.size_bytes(size_mb: '2GB')).to eq(2 * 1024 * 1024 * 1024)
+    end
+
+    it 'parses gigabytes with a decimal' do
+      expect(described_class.size_bytes(size_mb: '1.2GB')).to eq((1.2 * 1024 * 1024 * 1024).to_i)
+    end
+
+    it 'returns nil when the size is missing' do
+      expect(described_class.size_bytes({})).to be_nil
+    end
+
+    it 'returns nil when the size is unparseable' do
+      expect(described_class.size_bytes(size_mb: 'nope')).to be_nil
     end
   end
 
@@ -132,55 +154,56 @@ RSpec.describe BandcampDlRb::Downloader do
   end
 
   describe '.download_size' do
-    it 'returns the content length' do
-      success = double('success')
-      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
-      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
-      allow(success).to receive(:[]).with('content-length').and_return('12345')
+    def response_double(redirects:, success:, partial:, headers: {})
+      response = double('response')
+      { Net::HTTPRedirection => redirects, Net::HTTPSuccess => success,
+        Net::HTTPPartialContent => partial }.each do |klass, value|
+        allow(response).to receive(:is_a?).with(klass).and_return(value)
+      end
+      allow(response).to receive(:[]).and_return(nil)
+      headers.each { |key, value| allow(response).to receive(:[]).with(key).and_return(value) }
+      response
+    end
 
-      allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
+    def stub_http(&request_handler)
+      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
         http = double('http')
-        allow(http).to receive(:request).and_return(success)
+        allow(http).to receive(:request) { request_handler.call(host) }
         block.call(http)
       end
+    end
 
+    it 'reads the total from a partial content response' do
+      stub_http do
+        response_double(redirects: false, success: true, partial: true,
+                        headers: { 'content-range' => 'bytes 0-0/12345' })
+      end
       expect(described_class.download_size(client, 'https://bcbits/file.flac')).to eq(12_345)
     end
 
-    it 'follows redirects before reading content length' do
-      success = double('success')
-      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
-      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
-      allow(success).to receive(:[]).with('content-length').and_return('99')
-
-      redirect = double('redirect')
-      allow(redirect).to receive(:is_a?).with(Net::HTTPRedirection).and_return(true)
-      allow(redirect).to receive(:is_a?).with(Net::HTTPSuccess).and_return(false)
-      allow(redirect).to receive(:[]).with('location').and_return('https://final.example/file.flac')
-
-      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
-        http = double('http')
-        allow(http).to receive(:request) do
-          host == 'final.example' ? success : redirect
-        end
-        block.call(http)
+    it 'falls back to content-length when the server ignores the range' do
+      stub_http do
+        response_double(redirects: false, success: true, partial: false,
+                        headers: { 'content-length' => '2048' })
       end
+      expect(described_class.download_size(client, 'https://bcbits/file.flac')).to eq(2048)
+    end
 
+    it 'follows redirects before reading the size' do
+      stub_http do |host|
+        if host == 'final.example'
+          response_double(redirects: false, success: true, partial: true,
+                          headers: { 'content-range' => 'bytes 0-0/99' })
+        else
+          response_double(redirects: true, success: false, partial: false,
+                          headers: { 'location' => 'https://final.example/file.flac' })
+        end
+      end
       expect(described_class.download_size(client, 'https://bcbits/start')).to eq(99)
     end
 
-    it 'returns nil when content-length is missing' do
-      success = double('success')
-      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
-      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
-      allow(success).to receive(:[]).with('content-length').and_return(nil)
-
-      allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
-        http = double('http')
-        allow(http).to receive(:request).and_return(success)
-        block.call(http)
-      end
-
+    it 'returns nil when no size header is present' do
+      stub_http { response_double(redirects: false, success: true, partial: true) }
       expect(described_class.download_size(client, 'https://bcbits/file.flac')).to be_nil
     end
 

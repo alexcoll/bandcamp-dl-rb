@@ -39,13 +39,16 @@ module BandcampDlRb
     end
 
     # Determines the byte size of a remote download without saving it, by
-    # issuing a HEAD request and following redirects. Returns nil when the
-    # size cannot be determined.
+    # requesting a single byte (Range) and reading the total from the
+    # Content-Range header. Some download servers reject HEAD requests, so a
+    # ranged GET is used instead. Returns nil when the size cannot be
+    # determined.
     def self.download_size(client, url, max_redirects: 5)
       max_redirects.times do
         resp = perform_size_check(client, url)
         return nil unless resp
 
+        return total_from_content_range(resp) if partial_content?(resp)
         return resp['content-length']&.to_i if success_response?(resp)
         return nil unless redirect_to?(resp)
 
@@ -54,12 +57,24 @@ module BandcampDlRb
       nil
     end
 
+    def self.partial_content?(resp)
+      resp.is_a?(Net::HTTPPartialContent)
+    end
+
+    def self.total_from_content_range(resp)
+      range = resp['content-range']
+      return nil unless range
+
+      range.split('/').last.to_i
+    end
+
     def self.perform_size_check(client, url)
       uri = URI.parse(url)
       Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 30, read_timeout: 60) do |http|
-        req = Net::HTTP::Head.new(uri)
+        req = Net::HTTP::Get.new(uri)
         req['Cookie'] = "identity=#{client.identity}"
         req['User-Agent'] = USER_AGENT
+        req['Range'] = 'bytes=0-0'
         http.request(req)
       end
     rescue StandardError => e
@@ -91,9 +106,23 @@ module BandcampDlRb
     def self.first_available_format(downloads, format)
       ([format] + BandcampDlRb::QUALITY_ORDER).uniq.each do |fmt|
         url = downloads.dig(fmt, 'url')
-        return { url: url, format: fmt } if url
+        return { url: url, format: fmt, size_mb: downloads.dig(fmt, 'size_mb') } if url
       end
       nil
+    end
+
+    SIZE_UNITS = { 'B' => 1, 'KB' => 1024, 'MB' => 1024**2, 'GB' => 1024**3, 'TB' => 1024**4 }.freeze
+
+    # Bandcamp reports each format's size as a display string (e.g. "1.2GB")
+    # in the album pagedata. Parses it to bytes, or nil when absent.
+    def self.size_bytes(download)
+      raw = download[:size_mb]
+      return nil unless raw
+
+      match = raw.match(/([\d.]+)\s*(B|KB|MB|GB|TB)/i)
+      return nil unless match
+
+      (match[1].to_f * SIZE_UNITS[match[2].upcase]).to_i
     end
 
     def self.download_album(client, item, dest_dir, format, force: false)
