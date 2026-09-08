@@ -90,7 +90,7 @@ module BandcampDlRb
 
     def finalize(client, options, items)
       if options[:dry_run]
-        print_dry_run(items)
+        print_dry_run(client, items, options[:format])
         return 0
       end
 
@@ -154,14 +154,35 @@ module BandcampDlRb
       @err.puts '     copy its value and pass it with: --cookie-file <raw-value>'
     end
 
-    def print_dry_run(items)
+    def print_dry_run(client, items, format)
       BandcampDlRb.log "\n--- Dry Run ---"
+      total_bytes = 0
+      unknown = 0
+
       items.each_value do |item|
         artist = item['band_name'] || 'Unknown Artist'
         title = item['item_title'] || 'Unknown Album'
-        BandcampDlRb.log "  #{artist} - #{title}"
+        size = download_size_for(client, item, format)
+        if size
+          total_bytes += size
+          size_line = BandcampDlRb::Utils.human_size(size)
+        else
+          unknown += 1
+          size_line = 'unknown size'
+        end
+        BandcampDlRb.log "  #{artist} - #{title} (#{size_line})"
       end
-      BandcampDlRb.log "\nTotal: #{items.length} items would be downloaded"
+
+      total_line = BandcampDlRb::Utils.human_size(total_bytes)
+      total_line += " (+#{unknown} unknown)" if unknown.positive?
+      BandcampDlRb.log "\nTotal: #{items.length} items, #{total_line} would be downloaded"
+    end
+
+    def download_size_for(client, item, format)
+      download = Downloader.get_download_url(client, item['redownload_url'], format)
+      return nil unless download
+
+      Downloader.download_size(client, download[:url])
     end
 
     def download_items(client, items, options)

@@ -130,4 +130,63 @@ RSpec.describe BandcampDlRb::Downloader do
       end
     end
   end
+
+  describe '.download_size' do
+    it 'returns the content length' do
+      success = double('success')
+      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
+      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+      allow(success).to receive(:[]).with('content-length').and_return('12345')
+
+      allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
+        http = double('http')
+        allow(http).to receive(:request).and_return(success)
+        block.call(http)
+      end
+
+      expect(described_class.download_size(client, 'https://bcbits/file.flac')).to eq(12_345)
+    end
+
+    it 'follows redirects before reading content length' do
+      success = double('success')
+      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
+      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+      allow(success).to receive(:[]).with('content-length').and_return('99')
+
+      redirect = double('redirect')
+      allow(redirect).to receive(:is_a?).with(Net::HTTPRedirection).and_return(true)
+      allow(redirect).to receive(:is_a?).with(Net::HTTPSuccess).and_return(false)
+      allow(redirect).to receive(:[]).with('location').and_return('https://final.example/file.flac')
+
+      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
+        http = double('http')
+        allow(http).to receive(:request) do
+          host == 'final.example' ? success : redirect
+        end
+        block.call(http)
+      end
+
+      expect(described_class.download_size(client, 'https://bcbits/start')).to eq(99)
+    end
+
+    it 'returns nil when content-length is missing' do
+      success = double('success')
+      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
+      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+      allow(success).to receive(:[]).with('content-length').and_return(nil)
+
+      allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
+        http = double('http')
+        allow(http).to receive(:request).and_return(success)
+        block.call(http)
+      end
+
+      expect(described_class.download_size(client, 'https://bcbits/file.flac')).to be_nil
+    end
+
+    it 'returns nil when the request fails' do
+      allow(Net::HTTP).to receive(:start).and_raise(StandardError, 'boom')
+      expect(described_class.download_size(client, 'https://bcbits/file.flac')).to be_nil
+    end
+  end
 end
