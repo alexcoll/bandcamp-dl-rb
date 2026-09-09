@@ -9,6 +9,7 @@ library.
 - **Firefox, Safari, or Chrome** cookie auth (Safari: macOS only)
 - FLAC by default, with automatic fallback through a quality ladder
 - Outputs to a clean `Artist/Album/track` layout
+- Sync your whole collection, or download specific albums via **URL** or by **item ID**
 - Fast re-runs via a small local state file
 - Cross-platform: macOS, Windows, Linux
 
@@ -34,6 +35,10 @@ library.
    ```
 5. Writes a `.bandcamp-sync.json` state file so subsequent runs skip
    already-downloaded albums.
+
+You can instead download a single album or track by passing its Bandcamp URL
+with `--url`, or pick specific items from your collection by ID with
+`--items` (see [Individual items](#individual-items)).
 
 ---
 
@@ -203,7 +208,7 @@ bandcamp_dl_rb --library ~/Music/Bandcamp \
 ```
 bandcamp_dl_rb [options] <bandcamp-username>
 
-Downloads all your Bandcamp purchases and organizes them into a music library.
+Downloads your Bandcamp purchases and organizes them into a music library.
 ```
 
 ### Options
@@ -217,6 +222,8 @@ Downloads all your Bandcamp purchases and organizes them into a music library.
 | `-H, --include-hidden`       | Also download items hidden in your collection                    |
 | `--since DATE`               | Only items purchased on/after `YYYY-MM-DD`                       |
 | `--until DATE`               | Only items purchased before `YYYY-MM-DD`                         |
+| `--url URL`                  | Download a specific album/track by Bandcamp URL (repeatable)     |
+| `--items IDS`                | Download specific collection items by ID, e.g. `a100,t200` (requires username) |
 | `--force`                    | Re-download even if the album already exists                     |
 | `--dry-run`                  | List what would be downloaded without downloading                |
 | `-v, --verbose`              | Verbose output                                                   |
@@ -226,6 +233,52 @@ Downloads all your Bandcamp purchases and organizes them into a music library.
 
 `flac`, `mp3-320`, `mp3-v0`, `wav`, `aiff-lossless`, `aac-hi`, `alac`,
 `vorbis`.
+
+---
+
+## Individual items
+
+Instead of syncing your entire collection, you can download a single album or
+track by URL, or specific items from your collection by ID.
+
+### By URL with `--url`
+
+Pass the album/track page URL (repeatable). The script finds that item in
+your collection so it can use your download access:
+
+```bash
+# A single album
+bandcamp_dl_rb -l ~/Music/Bandcamp \
+  --url https://radiohead.bandcamp.com/album/in-rainbows yourname
+
+# Multiple albums / tracks
+bandcamp_dl_rb -l ~/Music/Bandcamp \
+  --url https://radiohead.bandcamp.com/album/in-rainbows \
+  --url https://aphextwin.bandcamp.com/track/windowlicker yourname
+```
+
+If the item isn't in your collection (e.g. it was a gift or is owned by a
+different account), the tool reports it as not found and moves on.
+
+### By item ID with `--items`
+
+Item IDs appear in dry-run output as `[a100] Artist - Album`. Pass a
+comma-separated list to download just those:
+
+```bash
+# See the IDs first
+bandcamp_dl_rb -l ~/Music/Bandcamp --dry-run yourname
+# --- Dry Run ---
+#   [a100] Radiohead - Kid A (1.1 MB)
+#   [a200] Radiohead - Amnesiac (781.2 KB)
+
+# Download just those two items
+bandcamp_dl_rb -l ~/Music/Bandcamp --items a100,a200 yourname
+```
+
+Downloading by item ID requires your Bandcamp username as the positional
+argument. Item IDs are the `sale_item_type` + `sale_item_id` pair Bandcamp
+uses internally (`a` = album, `t` = track).
 
 ---
 

@@ -158,4 +158,150 @@ RSpec.describe BandcampDlRb::Client do
       expect(items['a300']['redownload_url']).to eq('https://bandcamp.com/redownload/3')
     end
   end
+
+  describe '#get_html' do
+    it 'returns the response body on success' do
+      resp = instance_double(Net::HTTPSuccess, body: '<html>OK</html>')
+      allow(resp).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+      allow(client).to receive(:get).and_return(resp)
+
+      expect(client.get_html('https://radiohead.bandcamp.com/album/in-rainbows')).to eq('<html>OK</html>')
+    end
+
+    it 'returns nil on non-success response' do
+      resp = instance_double(Net::HTTPNotFound)
+      allow(resp).to receive(:is_a?).with(Net::HTTPSuccess).and_return(false)
+      allow(client).to receive(:get).and_return(resp)
+
+      expect(client.get_html('https://radiohead.bandcamp.com/album/missing')).to be_nil
+    end
+
+    it 'returns nil on error' do
+      allow(client).to receive(:get).and_raise(StandardError, 'timeout')
+
+      expect(client.get_html('https://radiohead.bandcamp.com/album/in-rainbows')).to be_nil
+    end
+  end
+
+  describe '#parse_tralbum' do
+    it 'extracts artist, title, id, and item_type from album page HTML' do
+      tralbum_data = {
+        'artist' => 'Radiohead',
+        'current' => { 'title' => 'In Rainbows' },
+        'id' => 2_162_872_411,
+        'item_type' => 'album'
+      }
+      html = <<~HTML
+        <div id="pagedata" data-blob="{}"></div>
+        <div data-tralbum='#{CGI.escapeHTML(JSON.generate(tralbum_data))}'></div>
+      HTML
+
+      result = client.parse_tralbum(html)
+      expect(result).to eq(
+        'band_name' => 'Radiohead',
+        'item_title' => 'In Rainbows',
+        'sale_item_id' => 2_162_872_411,
+        'sale_item_type' => 'a'
+      )
+    end
+
+    it 'maps item_type "track" to sale_item_type "t"' do
+      tralbum_data = {
+        'artist' => 'Aphex Twin',
+        'current' => { 'title' => 'Windowlicker' },
+        'id' => 123_456,
+        'item_type' => 'track'
+      }
+      html = %(<div data-tralbum='#{CGI.escapeHTML(JSON.generate(tralbum_data))}'></div>)
+
+      result = client.parse_tralbum(html)
+      expect(result['sale_item_type']).to eq('t')
+    end
+
+    it 'returns nil when data-tralbum attribute is missing' do
+      expect(client.parse_tralbum('<html><body>No data here</body></html>')).to be_nil
+    end
+
+    it 'returns nil when tralbum JSON is malformed' do
+      html = %(<div data-tralbum="NOT_JSON"></div>)
+      expect(client.parse_tralbum(html)).to be_nil
+    end
+  end
+
+  describe '#find_item_in_collection' do
+    let(:items) do
+      {
+        'a100' => {
+          'sale_item_type' => 'a', 'sale_item_id' => 100,
+          'band_name' => 'Radiohead', 'item_title' => 'Kid A'
+        },
+        't200' => {
+          'sale_item_type' => 't', 'sale_item_id' => 200,
+          'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker'
+        }
+      }
+    end
+
+    it 'finds an album by sale_item_id and type' do
+      tralbum = { 'sale_item_type' => 'a', 'sale_item_id' => 100 }
+      result = client.find_item_in_collection(items, tralbum)
+      expect(result).to eq(items['a100'])
+    end
+
+    it 'finds a track by sale_item_id and type' do
+      tralbum = { 'sale_item_type' => 't', 'sale_item_id' => 200 }
+      result = client.find_item_in_collection(items, tralbum)
+      expect(result).to eq(items['t200'])
+    end
+
+    it 'returns nil when no match exists' do
+      tralbum = { 'sale_item_type' => 'a', 'sale_item_id' => 999 }
+      expect(client.find_item_in_collection(items, tralbum)).to be_nil
+    end
+
+    it 'returns nil when type does not match' do
+      tralbum = { 'sale_item_type' => 't', 'sale_item_id' => 100 }
+      expect(client.find_item_in_collection(items, tralbum)).to be_nil
+    end
+  end
+
+  describe '#filter_by_ids' do
+    let(:items) do
+      {
+        'a100' => { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' },
+        'a200' => { 'band_name' => 'Radiohead', 'item_title' => 'Amnesiac' },
+        't300' => { 'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker' }
+      }
+    end
+
+    it 'filters items by a single ID' do
+      result = client.filter_by_ids(items, 'a100')
+      expect(result.keys).to eq(['a100'])
+    end
+
+    it 'filters items by comma-separated IDs' do
+      result = client.filter_by_ids(items, 'a100,t300')
+      expect(result.keys).to contain_exactly('a100', 't300')
+    end
+
+    it 'filters items by an array of IDs' do
+      result = client.filter_by_ids(items, %w[a100 a200])
+      expect(result.keys).to contain_exactly('a100', 'a200')
+    end
+
+    it 'strips whitespace from IDs' do
+      result = client.filter_by_ids(items, ' a100 , t300 ')
+      expect(result.keys).to contain_exactly('a100', 't300')
+    end
+
+    it 'returns empty hash when no IDs match' do
+      result = client.filter_by_ids(items, 'a999')
+      expect(result).to eq({})
+    end
+
+    it 'returns empty hash for empty input' do
+      result = client.filter_by_ids(items, '')
+      expect(result).to eq({})
+    end
+  end
 end

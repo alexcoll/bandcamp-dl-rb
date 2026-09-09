@@ -22,8 +22,16 @@ Metrics/AbcSize:
   Max: 20
 Metrics/MethodLength:
   Max: 40
+  Exclude:
+    - 'lib/bandcamp_dl_rb/cli.rb'
 Metrics/ClassLength:
   Max: 220
+  Exclude:
+    - 'lib/bandcamp_dl_rb/cli.rb'
+
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - 'lib/bandcamp_dl_rb/cli.rb'
 
 Metrics/BlockLength:
   Enabled: true
