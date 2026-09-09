@@ -42,7 +42,9 @@ module BandcampDlRb
         until_date: nil,
         force: false,
         dry_run: false,
-        username: nil
+        username: nil,
+        urls: [],
+        items: nil
       }
 
       parser = build_parser(options)
@@ -55,7 +57,14 @@ module BandcampDlRb
     private
 
     def valid_options?(options)
-      return true if options[:username] && options[:library]
+      has_library = options[:library]
+      has_url_mode = options[:urls].any?
+      has_item_mode = !options[:items].nil?
+      has_username = !options[:username].nil?
+
+      return true if has_library && has_url_mode
+      return true if has_library && has_item_mode && has_username
+      return true if has_library && has_username
 
       @err.puts(options[:parser])
       false
@@ -72,6 +81,24 @@ module BandcampDlRb
     end
 
     def acquire_items(client, options)
+      items = if options[:urls].any?
+                resolve_url_items(client, options)
+              elsif options[:items]
+                filter_collection_items(client, options)
+              else
+                fetch_collection(client, options)
+              end
+
+      if items.nil? || items.empty?
+        BandcampDlRb.log "\nNo downloadable items found."
+        return nil
+      end
+
+      BandcampDlRb.log "\nFound #{items.length} downloadable item(s)."
+      items
+    end
+
+    def fetch_collection(client, options)
       items = client.get_collection(
         options[:username],
         include_hidden: options[:include_hidden],
@@ -86,6 +113,76 @@ module BandcampDlRb
 
       BandcampDlRb.log "\nFound #{items.length} downloadable items in collection."
       items
+    end
+
+    def filter_collection_items(client, options)
+      BandcampDlRb.log "Fetching collection for #{options[:username]}..."
+      all_items = client.get_collection(
+        options[:username],
+        include_hidden: options[:include_hidden]
+      )
+
+      if all_items.empty?
+        BandcampDlRb.log "\nNo items found in collection. Check your username and ensure you're logged in."
+        return nil
+      end
+
+      items = client.filter_by_ids(all_items, options[:items])
+      if items.empty?
+        BandcampDlRb.log "\nNo matching items found for: #{options[:items]}"
+        BandcampDlRb.log "Available item IDs: #{all_items.keys.join(', ')}"
+        return nil
+      end
+
+      BandcampDlRb.log "Matched #{items.length} item(s) from collection."
+      items
+    end
+
+    def resolve_url_items(client, options)
+      items = {}
+      options[:urls].each do |url|
+        BandcampDlRb.log "Fetching #{url}..."
+        html = client.get_html(url)
+        unless html
+          BandcampDlRb.log "  Failed to fetch page: #{url}"
+          next
+        end
+
+        tralbum = client.parse_tralbum(html)
+        unless tralbum
+          BandcampDlRb.log "  Could not parse album data from: #{url}"
+          next
+        end
+
+        BandcampDlRb.log "  #{tralbum['band_name']} - #{tralbum['item_title']}"
+
+        item = resolve_item_from_tralbum(client, tralbum, options)
+        if item
+          items[item_key(item)] = item
+        else
+          BandcampDlRb.log '  Not found in collection or no download available'
+        end
+      end
+      items
+    end
+
+    def resolve_item_from_tralbum(client, tralbum, options)
+      username = options[:username]
+      unless username
+        BandcampDlRb.log '  Username required to look up download URL (pass as positional arg)'
+        return nil
+      end
+
+      BandcampDlRb.log '  Searching collection for this item...'
+      collection = client.get_collection(username, include_hidden: options[:include_hidden])
+      item = client.find_item_in_collection(collection, tralbum)
+      return item if item
+
+      nil
+    end
+
+    def item_key(item)
+      "#{item['sale_item_type']}#{item['sale_item_id']}"
     end
 
     def finalize(client, options, items)
@@ -107,7 +204,8 @@ module BandcampDlRb
       OptionParser.new do |opts|
         opts.banner = "Usage: #{$PROGRAM_NAME} [options] <bandcamp-username>"
         opts.separator ''
-        opts.separator 'Downloads all your Bandcamp purchases and organizes them for Plex.'
+        opts.separator 'Downloads Bandcamp purchases and organizes them for Plex.'
+        opts.separator 'Provide a username to sync your collection, or --url/--items for specific items.'
         opts.separator ''
         opts.separator 'Authentication:'
         opts.separator '  The script reads your identity cookie from Firefox, Safari, or Chrome automatically (macOS).'
@@ -135,6 +233,10 @@ module BandcampDlRb
         end
         opts.on('--force', 'Re-download even if album already exists') { options[:force] = true }
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
+        opts.on('--url URL', 'Download a specific album/track by Bandcamp URL (repeatable)') { |v| options[:urls] << v }
+        opts.on('--items IDS', 'Download specific items by ID, e.g. a100,t200 (requires username)') do |v|
+          options[:items] = v
+        end
         opts.on('-v', '--verbose', 'Verbose output') { BandcampDlRb.verbose = true }
         opts.on('-h', '--help', 'Show this help') do
           @out.puts opts
@@ -159,7 +261,7 @@ module BandcampDlRb
       total_bytes = 0
       unknown = 0
 
-      items.each_value do |item|
+      items.each do |key, item|
         artist = item['band_name'] || 'Unknown Artist'
         title = item['item_title'] || 'Unknown Album'
         size = download_size_for(client, item, format)
@@ -170,7 +272,7 @@ module BandcampDlRb
           unknown += 1
           size_line = 'unknown size'
         end
-        BandcampDlRb.log "  #{artist} - #{title} (#{size_line})"
+        BandcampDlRb.log "  [#{key}] #{artist} - #{title} (#{size_line})"
       end
 
       total_line = BandcampDlRb::Utils.human_size(total_bytes)

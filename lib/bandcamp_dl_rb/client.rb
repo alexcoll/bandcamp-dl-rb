@@ -23,6 +23,16 @@ module BandcampDlRb
       http_request(uri, req)
     end
 
+    def get_html(url)
+      resp = get(url)
+      return nil unless resp.is_a?(Net::HTTPSuccess)
+
+      resp.body
+    rescue StandardError => e
+      BandcampDlRb.log_verbose "  Error fetching page: #{e.message}"
+      nil
+    end
+
     def post_json(url, data)
       uri = URI.parse(url)
       req = Net::HTTP::Post.new(uri)
@@ -87,6 +97,33 @@ module BandcampDlRb
     rescue StandardError => e
       BandcampDlRb.log_verbose "  Error fetching hidden items: #{e.message}"
       nil
+    end
+
+    def parse_tralbum(html)
+      match = html.match(/data-tralbum=("([^"]+)"|'([^']+)')/)
+      return nil unless match
+
+      raw = match[2] || match[3]
+      data = JSON.parse(CGI.unescapeHTML(raw))
+      {
+        'band_name' => data['artist'],
+        'item_title' => data.dig('current', 'title'),
+        'sale_item_id' => data['id'],
+        'sale_item_type' => data['item_type'] == 'album' ? 'a' : 't'
+      }
+    rescue StandardError => e
+      BandcampDlRb.log_verbose "  Error parsing tralbum data: #{e.message}"
+      nil
+    end
+
+    def find_item_in_collection(items, tralbum)
+      key = "#{tralbum['sale_item_type']}#{tralbum['sale_item_id']}"
+      items[key]
+    end
+
+    def filter_by_ids(items, item_ids)
+      ids = Array(item_ids).flat_map { |id| id.split(',') }.map(&:strip).reject(&:empty?)
+      items.slice(*ids)
     end
 
     def get_collection(username, include_hidden: false, since: nil, until_date: nil)
