@@ -41,10 +41,13 @@ jobs:
           generate_release_notes: true
 
       - name: Trigger Homebrew tap formula bump
-        if: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
         env:
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "TAP_GITHUB_TOKEN not set, skipping tap update"
+            exit 0
+          fi
           curl -sS -X POST \
             -H "Authorization: Bearer $TAP_GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
