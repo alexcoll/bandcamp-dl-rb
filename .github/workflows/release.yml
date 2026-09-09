@@ -48,7 +48,7 @@ jobs:
             echo "TAP_GITHUB_TOKEN not set, skipping tap update"
             exit 0
           fi
-          curl -sS -X POST \
+          curl -fsS -X POST \
             -H "Authorization: Bearer $TAP_GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
