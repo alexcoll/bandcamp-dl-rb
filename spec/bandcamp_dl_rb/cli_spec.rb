@@ -86,6 +86,16 @@ RSpec.describe BandcampDlRb::CLI do
       expect(options[:urls]).to eq([])
       expect(options[:items]).to be_nil
     end
+
+    it 'defaults jobs to 1' do
+      options = described_class.parse_args(['--library', '/x', 'u'])
+      expect(options[:jobs]).to eq(1)
+    end
+
+    it 'parses --jobs' do
+      options = described_class.parse_args(['--library', '/x', '--jobs', '3', 'u'])
+      expect(options[:jobs]).to eq(3)
+    end
   end
 
   describe '.run' do
@@ -107,6 +117,21 @@ RSpec.describe BandcampDlRb::CLI do
       err = StringIO.new
       out = StringIO.new
       code = described_class.run(['--library', '/x', '--items', 'a100'], out: out, err: err)
+      expect(code).to eq(1)
+    end
+
+    it 'returns exit code 1 when --jobs is out of range' do
+      err = StringIO.new
+      out = StringIO.new
+      code = described_class.run(['--library', '/x', '--jobs', '5', 'u'], out: out, err: err)
+      expect(code).to eq(1)
+      expect(err.string).to include('--jobs must be between 1 and 4')
+    end
+
+    it 'returns exit code 1 when --jobs is less than 1' do
+      err = StringIO.new
+      out = StringIO.new
+      code = described_class.run(['--library', '/x', '--jobs', '0', 'u'], out: out, err: err)
       expect(code).to eq(1)
     end
   end
@@ -314,6 +339,22 @@ RSpec.describe BandcampDlRb::CLI do
         expect(@exit_code).to eq(1)
         expect(@err_string).to include('No matching items found for: a999')
         expect(@err_string).to include('Available item IDs: a100, a200, t300')
+      end
+
+      it 'downloads the whole collection in parallel with --jobs' do
+        keys = Queue.new
+        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_args, **_kw|
+          keys << "#{item['sale_item_type']}#{item['sale_item_id']}"
+          :downloaded
+        end
+
+        run_cli(['--library', @library, '--jobs', '2', 'testuser'])
+
+        expect(@exit_code).to eq(0)
+        expect(@err_string).to include('Downloaded:  3')
+        downloaded = []
+        downloaded << keys.pop until keys.empty?
+        expect(downloaded).to contain_exactly('a100', 'a200', 't300')
       end
     end
   end
