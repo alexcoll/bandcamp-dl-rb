@@ -24,8 +24,31 @@ RSpec.describe BandcampDlRb::Utils do
       expect(described_class.sanitize_path('Radiohead')).to eq('Radiohead')
     end
 
-    it 'handles empty string' do
-      expect(described_class.sanitize_path('')).to eq('')
+    it 'neutralizes a single dot segment' do
+      expect(described_class.sanitize_path('.')).to eq('-')
+    end
+
+    it 'neutralizes a dotdot segment' do
+      expect(described_class.sanitize_path('..')).to eq('-')
+    end
+
+    it 'neutralizes space-dotted segments' do
+      expect(described_class.sanitize_path(' . ')).to eq('-')
+      expect(described_class.sanitize_path('. .')).to eq('-')
+    end
+
+    it 'leaves internal dots unchanged' do
+      expect(described_class.sanitize_path('Dots and Loops')).to eq('Dots and Loops')
+      expect(described_class.sanitize_path('a..b')).to eq('a..b')
+    end
+
+    it 'trims trailing dots' do
+      expect(described_class.sanitize_path('title.')).to eq('title')
+    end
+
+    it 'falls back to a dash for blank input' do
+      expect(described_class.sanitize_path('')).to eq('-')
+      expect(described_class.sanitize_path('   ')).to eq('-')
     end
   end
 

@@ -91,6 +91,48 @@ RSpec.describe BandcampDlRb::Downloader do
     end
   end
 
+  describe '.album_dir_for' do
+    around do |example|
+      Dir.mktmpdir do |dir|
+        @dest = dir
+        example.run
+      end
+    end
+
+    it 'builds Artist/Album under the destination dir' do
+      item = { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to eq(File.join(@dest, 'Radiohead', 'Kid A'))
+    end
+
+    it 'keeps a dotdot band name inside the destination dir' do
+      item = { 'band_name' => '..', 'item_title' => 'Kid A' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to start_with(@dest + File::SEPARATOR)
+    end
+
+    it 'keeps a dotdot item title inside the destination dir' do
+      item = { 'band_name' => 'Radiohead', 'item_title' => '..' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to start_with(@dest + File::SEPARATOR)
+    end
+
+    it 'keeps a dotdot band name and title together inside the destination dir' do
+      item = { 'band_name' => '. .', 'item_title' => '..' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to start_with(@dest + File::SEPARATOR)
+    end
+
+    it 'falls back to placeholder names and warns when the path would escape' do
+      item = { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' }
+      allow(described_class).to receive(:contained_in?).and_return(false)
+      expect(BandcampDlRb).to receive(:log_verbose).with(/escapes library root/)
+
+      result = described_class.album_dir_for(item, @dest)
+      expect(result).to eq(File.join(@dest, 'Unknown Artist', 'Unknown Album'))
+    end
+  end
+
   describe '.download_album' do
     let(:item) do
       {

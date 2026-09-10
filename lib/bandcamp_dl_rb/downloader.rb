@@ -226,9 +226,20 @@ module BandcampDlRb
     end
 
     def self.album_dir_for(item, dest_dir)
-      artist = BandcampDlRb::Utils.sanitize_path(item['band_name'] || 'Unknown Artist')
-      title = BandcampDlRb::Utils.sanitize_path(item['item_title'] || 'Unknown Album')
-      File.join(dest_dir, artist, title)
+      album_dir = File.join(dest_dir, safe_segment(item['band_name'], 'Unknown Artist'),
+                            safe_segment(item['item_title'], 'Unknown Album'))
+      return album_dir if contained_in?(album_dir, dest_dir)
+
+      BandcampDlRb.log_verbose '    Album path escapes library root; using placeholder name'
+      File.join(dest_dir, 'Unknown Artist', 'Unknown Album')
+    end
+
+    def self.safe_segment(raw, fallback)
+      BandcampDlRb::Utils.sanitize_path(raw || fallback)
+    end
+
+    def self.contained_in?(path, root)
+      File.expand_path(path).start_with?(File.expand_path(root) + File::SEPARATOR)
     end
 
     def self.album_exists?(album_dir)
