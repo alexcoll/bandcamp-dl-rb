@@ -5,6 +5,9 @@ module BandcampDlRb
   # organizes them into an Artist/Album directory layout for Plex.
   class Downloader
     USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+    AUDIO_EXTENSIONS = /\.(flac|mp3|wav|m4a|aiff|ogg)$/i
+    COVER_EXTENSIONS = /\.(jpe?g|png)$/i
+    COVER_CDN = 'https://f4.bcbits.com/img/a%s_10.jpg'
 
     def self.download_file(client, url, dest_path, max_retries: 3)
       max_retries.times do |attempt|
@@ -90,17 +93,26 @@ module BandcampDlRb
       resp.is_a?(Net::HTTPSuccess)
     end
 
-    def self.get_download_url(client, album_url, format)
-      pagedata = client.get_pagedata(album_url)
-      return nil unless pagedata
-
-      item = pagedata.dig('download_items', 0)
+    # Fetches the download page and resolves the URL for the requested format.
+    # Pass pre-fetched +pagedata+ to avoid a redundant HTTP request.
+    def self.get_download_url(client, album_url, format, pagedata: nil)
+      pagedata ||= client.get_pagedata(album_url)
+      item = pagedata&.dig('download_items', 0)
       return nil unless item
 
       downloads = item['downloads']
       return nil unless downloads
 
-      first_available_format(downloads, format)
+      dl = first_available_format(downloads, format)
+      return nil unless dl
+
+      attach_art_id(dl, item, pagedata)
+      dl
+    end
+
+    def self.attach_art_id(download_info, item, pagedata)
+      art_id = item['art_id'] || pagedata['art_id']
+      download_info[:art_id] = art_id if art_id
     end
 
     def self.first_available_format(downloads, format)
@@ -136,11 +148,15 @@ module BandcampDlRb
       end
 
       BandcampDlRb.log "  Downloading: #{label}"
-      dl = get_download_url(client, item['redownload_url'], format)
+      pagedata = client.get_pagedata(item['redownload_url'])
+      dl = get_download_url(client, nil, format, pagedata: pagedata)
       unless dl
         BandcampDlRb.log '    No download available for this format'
         return :unavailable
       end
+
+      save_cover(client, dl, album_dir)
+      save_album_info(pagedata, album_dir)
 
       tmp_dir = temp_dir_for(item)
       tmp_file = download_to_temp(client, dl, tmp_dir)
@@ -148,6 +164,61 @@ module BandcampDlRb
 
       placed = place_download(tmp_file, album_dir)
       placed ? :downloaded : :failed
+    end
+
+    def self.save_cover(client, download_info, album_dir)
+      art_id = download_info[:art_id]
+      return unless art_id
+
+      url = format(COVER_CDN, art_id)
+      dest = File.join(album_dir, 'cover.jpg')
+      return if File.exist?(dest)
+
+      BandcampDlRb.log_verbose '    Downloading cover art...'
+      ok = download_file(client, url, dest, max_retries: 2)
+      FileUtils.rm_f(dest) unless ok
+    rescue StandardError => e
+      BandcampDlRb.log_verbose "    Cover download error: #{e.message}"
+    end
+
+    def self.save_album_info(pagedata, album_dir)
+      return unless pagedata
+
+      info = extract_album_metadata(pagedata)
+      return if info.empty?
+
+      dest = File.join(album_dir, 'album.json')
+      File.write(dest, JSON.pretty_generate(info))
+    rescue StandardError => e
+      BandcampDlRb.log_verbose "    Album info error: #{e.message}"
+    end
+
+    def self.extract_album_metadata(pagedata)
+      return {} unless pagedata.is_a?(Hash)
+
+      digital_item = pagedata.dig('download_items', 0) || {}
+      source = pagedata.merge(digital_item) { |_key, paged, item| item || paged }
+
+      {
+        'artist' => source['artist'],
+        'title' => source['title'],
+        'release_date' => source['album_release_date'],
+        'label' => source['label'],
+        'credits' => source['credits']
+      }.merge(tracklist_metadata(source)).compact
+    end
+
+    def self.tracklist_metadata(source)
+      trackinfo = source['trackinfo']
+      return {} unless trackinfo.is_a?(Array) && !trackinfo.empty?
+
+      { 'tracklist' => trackinfo.map { |track| track_entry(track) } }
+    end
+
+    def self.track_entry(track)
+      entry = { 'title' => track['title'], 'duration' => track['duration'] }
+      entry['track_num'] = track['track_num'] if track.key?('track_num')
+      entry
     end
 
     def self.album_label(album_dir)
@@ -185,23 +256,25 @@ module BandcampDlRb
     def self.place_download(tmp_file, album_dir)
       ext = File.extname(tmp_file)
       if ext == '.zip'
-        ok = extract_zip(tmp_file, album_dir)
+        extract_zip(tmp_file, album_dir)
       else
         FileUtils.cp(tmp_file, album_dir)
         BandcampDlRb.log "    Saved to #{album_dir}"
-        ok = true
+        true
       end
+    ensure
       FileUtils.rm_rf(File.dirname(tmp_file))
-      ok
     end
 
     def self.extract_zip(tmp_file, album_dir)
       Zip::File.open(tmp_file) do |zip|
         zip.each do |entry|
-          next if entry.name.start_with?('__MACOSX', '.')
-          next unless File.basename(entry.name).match?(BandcampDlRb::AUDIO_EXTENSIONS)
+          next unless extractable_entry?(entry)
 
-          entry.extract(File.join(album_dir, File.basename(entry.name)))
+          basename = File.basename(entry.name)
+          next if existing_cover?(basename, album_dir)
+
+          entry.extract(basename, destination_directory: album_dir)
         end
       end
       BandcampDlRb.log "    Extracted to #{album_dir}"
@@ -209,6 +282,17 @@ module BandcampDlRb
     rescue StandardError => e
       BandcampDlRb.log "    Error extracting zip: #{e.message}"
       false
+    end
+
+    def self.extractable_entry?(entry)
+      return false if entry.name.start_with?('__MACOSX', '.')
+
+      basename = File.basename(entry.name)
+      basename.match?(AUDIO_EXTENSIONS) || basename.match?(COVER_EXTENSIONS)
+    end
+
+    def self.existing_cover?(basename, album_dir)
+      basename.match?(COVER_EXTENSIONS) && File.exist?(File.join(album_dir, basename))
     end
   end
 end
