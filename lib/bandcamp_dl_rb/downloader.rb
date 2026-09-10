@@ -235,8 +235,8 @@ module BandcampDlRb
       Dir.glob(File.join(album_dir, '*.{flac,mp3,wav,zip,m4a,aiff,ogg}')).any?
     end
 
-    def self.temp_dir_for(item)
-      File.join(Dir.tmpdir, "bc_#{item['sale_item_id']}_#{Process.pid}")
+    def self.temp_dir_for(_item)
+      Dir.mktmpdir('bc')
     end
 
     def self.download_to_temp(client, download, tmp_dir)
@@ -250,6 +250,7 @@ module BandcampDlRb
         return nil
       end
 
+      File.chmod(0o600, tmp_file)
       tmp_file
     end
 
