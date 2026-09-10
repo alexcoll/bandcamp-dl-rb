@@ -3,6 +3,8 @@
 module BandcampDlRb
   # Command-line interface: argument parsing and the top-level run loop.
   class CLI
+    MAX_JOBS = 4
+
     def self.parse_args(argv = ARGV)
       new.parse_args(argv)
     end
@@ -44,7 +46,8 @@ module BandcampDlRb
         dry_run: false,
         username: nil,
         urls: [],
-        items: nil
+        items: nil,
+        jobs: 1
       }
 
       parser = build_parser(options)
@@ -57,6 +60,10 @@ module BandcampDlRb
     private
 
     def valid_options?(options)
+      valid_jobs?(options) && valid_mode?(options)
+    end
+
+    def valid_mode?(options)
       has_library = options[:library]
       has_url_mode = options[:urls].any?
       has_item_mode = !options[:items].nil?
@@ -66,6 +73,16 @@ module BandcampDlRb
       return true if has_library && has_item_mode && has_username
       return true if has_library && has_username
 
+      @err.puts(options[:parser])
+      false
+    end
+
+    def valid_jobs?(options)
+      jobs = options[:jobs]
+      return true unless jobs
+      return true if (1..MAX_JOBS).cover?(jobs)
+
+      @err.puts "ERROR: --jobs must be between 1 and #{MAX_JOBS}."
       @err.puts(options[:parser])
       false
     end
@@ -234,6 +251,10 @@ module BandcampDlRb
         opts.on('--force', 'Re-download even if album already exists') { options[:force] = true }
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
         opts.on('--url URL', 'Download a specific album/track by Bandcamp URL (repeatable)') { |v| options[:urls] << v }
+        opts.on('-j', '--jobs N', Integer,
+                "Download up to N albums in parallel (1-#{MAX_JOBS}, default: 1)") do |v|
+          options[:jobs] = v
+        end
         opts.on('--items IDS', 'Download specific items by ID, e.g. a100,t200 (requires username)') do |v|
           options[:items] = v
         end
@@ -289,12 +310,50 @@ module BandcampDlRb
 
     def download_items(client, items, options)
       @stats = { downloaded: 0, skipped: 0, failed: 0, unavailable: 0 }
+      if (options[:jobs] || 1) > 1
+        download_items_parallel(client, items, options)
+      else
+        download_items_serial(client, items, options)
+      end
+    end
+
+    def download_items_serial(client, items, options)
       items.each_value do |item|
         result = Downloader.download_album(
           client, item, options[:library], options[:format], force: options[:force]
         )
         @stats[result] += 1
       end
+    end
+
+    def download_items_parallel(client, items, options)
+      queue = Queue.new
+      items.each_value { |item| queue << item }
+      stats_mutex = Mutex.new
+
+      workers = Array.new(options[:jobs]) { download_worker(client, queue, options, stats_mutex) }
+      workers.each(&:join)
+    end
+
+    def download_worker(client, queue, options, stats_mutex)
+      Thread.new do
+        loop do
+          item = queue.pop(true)
+          result = Downloader.download_album(
+            client, item, options[:library], options[:format], force: options[:force]
+          )
+          stats_mutex.synchronize { @stats[result] += 1 }
+        rescue ThreadError
+          break
+        rescue StandardError => e
+          BandcampDlRb.log "  Error downloading #{item_label(item)}: #{e.message}"
+          stats_mutex.synchronize { @stats[:failed] += 1 }
+        end
+      end
+    end
+
+    def item_label(item)
+      "#{item['band_name'] || 'Unknown Artist'} - #{item['item_title'] || 'Unknown Album'}"
     end
 
     def write_state_file(items, options)

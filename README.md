@@ -224,6 +224,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--until DATE`               | Only items purchased before `YYYY-MM-DD`                         |
 | `--url URL`                  | Download a specific album/track by Bandcamp URL (repeatable)     |
 | `--items IDS`                | Download specific collection items by ID, e.g. `a100,t200` (requires username) |
+| `-j, --jobs N`               | Download up to `N` albums in parallel (1-4, default: `1`)        |
 | `--force`                    | Re-download even if the album already exists                     |
 | `--dry-run`                  | List what would be downloaded without downloading                |
 | `-v, --verbose`              | Verbose output                                                   |
@@ -279,6 +280,19 @@ bandcamp_dl_rb -l ~/Music/Bandcamp --items a100,a200 yourname
 Downloading by item ID requires your Bandcamp username as the positional
 argument. Item IDs are the `sale_item_type` + `sale_item_id` pair Bandcamp
 uses internally (`a` = album, `t` = track).
+
+### Downloading in parallel
+
+Large collections download one album at a time by default. Pass `-j N` to
+download up to `N` albums concurrently:
+
+```bash
+bandcamp_dl_rb -l ~/Music/Bandcamp -j 4 yourname
+```
+
+Keep `N` small (max `4`): Bandcamp throttles session endpoints, and each
+worker downloads both the zip and its metadata. Downloads are rate-limited as
+a side effect of the built-in retry/backoff in `Downloader`.
 
 ---
 
