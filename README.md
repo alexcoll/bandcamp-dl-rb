@@ -231,6 +231,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `-j, --jobs N`               | Download up to `N` albums in parallel (1-4, default: `1`)        |
 | `--force`                    | Re-download even if the album already exists                     |
 | `--dry-run`                  | List what would be downloaded without downloading                |
+| `-V, --version`              | Show the version and exit                                        |
 | `-v, --verbose`              | Verbose output                                                   |
 | `-h, --help`                 | Show help                                                        |
 
@@ -382,6 +383,27 @@ bundle exec rspec
 # or
 rspec
 ```
+
+## Shell completion
+
+Tab completion for the CLI flags ships with the gem in `completions/`
+(bash, zsh, and fish). Source the file for your shell in your dotfiles, or use a
+framework that picks up completions from `gem contents bandcamp_dl_rb`:
+
+```bash
+# bash
+source "$(gem contents bandcamp_dl_rb | grep bandcamp_dl_rb.bash)"
+
+# zsh
+autoload -U compinit && compinit
+source "$(gem contents bandcamp_dl_rb | grep _bandcamp_dl_rb)"
+
+# fish
+source (gem contents bandcamp_dl_rb | grep bandcamp_dl_rb.fish)
+```
+
+Homebrew installs put the completions alongside the formula; for example,
+copy them into zsh's `fpath` if you don't use a completion framework.
 
 ---
 

@@ -296,6 +296,10 @@ module BandcampDlRb
           @out.puts opts
           exit
         end
+        opts.on('-V', '--version', 'Show version') do
+          @out.puts "bandcamp_dl_rb #{BandcampDlRb::VERSION}"
+          exit
+        end
       end
     end
     # rubocop:enable Metrics/AbcSize
