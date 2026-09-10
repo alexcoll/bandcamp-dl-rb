@@ -1,0 +1,30 @@
+#compdef bandcamp_dl_rb
+
+_bandcamp_dl_rb() {
+  local -a formats browsers
+  formats=(flac wav aiff-lossless mp3-320 mp3-v0 aac-hi alac vorbis)
+  browsers=(firefox chrome chromium safari auto)
+
+  _arguments \
+    {-l,--library}'[Plex library root path]:path:_files' \
+    {-f,--format}'[Audio format]:format:(${(j: :)formats})' \
+    {-b,--browser}'[Browser to extract cookies from]:browser:(${(j: :)browsers})' \
+    {-c,--cookie-file}'[Path to cookies.txt file or identity cookie value]:file:_files' \
+    {-H,--include-hidden}'[Also download hidden items]' \
+    '--since[Only download items purchased on/after DATE]:date' \
+    '--until[Only download items purchased before DATE]:date' \
+    '--force[Re-download even if album already exists]' \
+    '--dry-run[Show what would be downloaded without downloading]' \
+    '--url[Download a specific album/track by URL]:url' \
+    {-j,--jobs}'[Download N albums in parallel (1-4)]:jobs' \
+    '--items[Download specific items by ID]:ids' \
+    '--filter[Download only items matching REGEX]:regex' \
+    {-v,--verbose}'[Verbose output]' \
+    {-h,--help}'[Show help]' \
+    {-V,--version}'[Show version]' \
+    '*:bandcamp username:_users' && return 0
+
+  _files
+}
+
+_bandcamp_dl_rb "$@"

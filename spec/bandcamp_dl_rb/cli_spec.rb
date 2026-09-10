@@ -137,6 +137,20 @@ RSpec.describe BandcampDlRb::CLI do
       expect(code).to eq(1)
     end
 
+    it 'prints the version and exits 0 with --version' do
+      out = StringIO.new
+      expect { described_class.run(['--version'], out: out, err: StringIO.new) }
+        .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      expect(out.string).to eq("bandcamp_dl_rb #{BandcampDlRb::VERSION}\n")
+    end
+
+    it 'prints the version with -V' do
+      out = StringIO.new
+      expect { described_class.run(['-V'], out: out, err: StringIO.new) }
+        .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      expect(out.string).to include("bandcamp_dl_rb #{BandcampDlRb::VERSION}")
+    end
+
     it 'returns exit code 1 when --jobs is out of range' do
       err = StringIO.new
       out = StringIO.new
