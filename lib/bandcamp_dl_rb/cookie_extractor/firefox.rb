@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require 'sqlite3'
-require 'fileutils'
-require 'tmpdir'
 
 module BandcampDlRb
   class CookieExtractor
@@ -60,20 +58,14 @@ module BandcampDlRb
       def read_cookie(cookie_path)
         return nil unless File.exist?(cookie_path)
 
-        tmp = copy_to_temp(cookie_path)
-        value = query_identity(tmp)
-        FileUtils.rm_f(tmp)
+        dir = TempCopy.create(cookie_path, 'bc_firefox_cookies_')
+        value = query_identity(File.join(dir, TempCopy::FILE_NAME))
         present?(value) ? value : nil
       rescue StandardError => e
         BandcampDlRb.log_verbose "  Firefox cookie read error: #{e.message}"
-        FileUtils.rm_f(tmp) if tmp
         nil
-      end
-
-      def copy_to_temp(cookie_path)
-        tmp = File.join(Dir.tmpdir, "bc_firefox_cookies_#{Process.pid}.sqlite")
-        FileUtils.cp(cookie_path, tmp)
-        tmp
+      ensure
+        TempCopy.cleanup(dir)
       end
 
       def query_identity(tmp)
