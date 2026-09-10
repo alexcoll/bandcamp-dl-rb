@@ -32,7 +32,7 @@ module BandcampDlRb
       uri = URI.parse(url)
       Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 120) do |http|
         req = Net::HTTP::Get.new(uri)
-        req['Cookie'] = "identity=#{client.identity}"
+        req['Cookie'] = "identity=#{client.identity}" if BandcampDlRb.download_host?(uri.hostname)
         req['User-Agent'] = USER_AGENT
         http.request(req)
       end
@@ -75,7 +75,7 @@ module BandcampDlRb
       uri = URI.parse(url)
       Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, open_timeout: 30, read_timeout: 60) do |http|
         req = Net::HTTP::Get.new(uri)
-        req['Cookie'] = "identity=#{client.identity}"
+        req['Cookie'] = "identity=#{client.identity}" if BandcampDlRb.download_host?(uri.hostname)
         req['User-Agent'] = USER_AGENT
         req['Range'] = 'bytes=0-0'
         http.request(req)

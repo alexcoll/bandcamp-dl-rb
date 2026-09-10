@@ -16,7 +16,7 @@ module BandcampDlRb
     def get(url)
       uri = URI.parse(url)
       req = Net::HTTP::Get.new(uri)
-      req['Cookie'] = @cookie
+      req['Cookie'] = @cookie if BandcampDlRb.bc_host?(uri.hostname)
       req['User-Agent'] = USER_AGENT
       req['Accept'] = '*/*'
 
@@ -36,7 +36,7 @@ module BandcampDlRb
     def post_json(url, data)
       uri = URI.parse(url)
       req = Net::HTTP::Post.new(uri)
-      req['Cookie'] = @cookie
+      req['Cookie'] = @cookie if BandcampDlRb.bc_host?(uri.hostname)
       req['User-Agent'] = USER_AGENT
       req['Content-Type'] = 'application/json'
       req['Accept'] = 'application/json'
