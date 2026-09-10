@@ -126,6 +126,14 @@ module BandcampDlRb
       items.slice(*ids)
     end
 
+    def filter_collection(items, pattern)
+      regex = pattern.is_a?(Regexp) ? pattern : Regexp.new(pattern, Regexp::IGNORECASE)
+      items.select do |_key, item|
+        haystack = [item['band_name'], item['item_title']].compact.join(' ')
+        haystack.match?(regex)
+      end
+    end
+
     def get_collection(username, include_hidden: false, since: nil, until_date: nil)
       log "Fetching collection page for #{username}..."
       pagedata = load_pagedata(username)

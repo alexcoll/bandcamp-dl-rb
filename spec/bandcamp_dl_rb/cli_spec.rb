@@ -96,6 +96,16 @@ RSpec.describe BandcampDlRb::CLI do
       options = described_class.parse_args(['--library', '/x', '--jobs', '3', 'u'])
       expect(options[:jobs]).to eq(3)
     end
+
+    it 'defaults filter to nil' do
+      options = described_class.parse_args(['--library', '/x', 'u'])
+      expect(options[:filter]).to be_nil
+    end
+
+    it 'parses --filter' do
+      options = described_class.parse_args(['--library', '/x', '--filter', 'amd', 'u'])
+      expect(options[:filter]).to eq('amd')
+    end
   end
 
   describe '.run' do
@@ -117,6 +127,13 @@ RSpec.describe BandcampDlRb::CLI do
       err = StringIO.new
       out = StringIO.new
       code = described_class.run(['--library', '/x', '--items', 'a100'], out: out, err: err)
+      expect(code).to eq(1)
+    end
+
+    it 'returns exit code 1 when --filter is used without username' do
+      err = StringIO.new
+      out = StringIO.new
+      code = described_class.run(['--library', '/x', '--filter', 'amd'], out: out, err: err)
       expect(code).to eq(1)
     end
 
@@ -357,6 +374,74 @@ RSpec.describe BandcampDlRb::CLI do
         expect(downloaded).to contain_exactly('a100', 'a200', 't300')
       end
     end
+
+    describe 'filter mode end to end' do
+      let(:collection_html) do
+        blob = {
+          'collection_count' => 3,
+          'fan_data' => { 'fan_id' => 123 },
+          'item_cache' => {
+            'collection' => {
+              'a100' => {
+                'sale_item_type' => 'a', 'sale_item_id' => 100,
+                'band_name' => 'Radiohead', 'item_title' => 'Kid A', 'tralbum_type' => 'a'
+              },
+              'a200' => {
+                'sale_item_type' => 'a', 'sale_item_id' => 200,
+                'band_name' => 'Radiohead', 'item_title' => 'Amnesiac', 'tralbum_type' => 'a'
+              },
+              't300' => {
+                'sale_item_type' => 't', 'sale_item_id' => 300,
+                'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker', 'tralbum_type' => 't'
+              }
+            },
+            'hidden' => {}
+          },
+          'collection_data' => {
+            'item_count' => 3, 'last_token' => nil,
+            'redownload_urls' => {
+              'a100' => 'https://bandcamp.com/download/album?id=100',
+              'a200' => 'https://bandcamp.com/download/album?id=200',
+              't300' => 'https://bandcamp.com/download/track?id=300'
+            }
+          },
+          'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
+        }
+        %(<div id="pagedata" data-blob="#{CGI.escapeHTML(JSON.generate(blob))}"></div>)
+      end
+
+      before do
+        stub_http do |req|
+          raise "Unexpected request: #{req.uri}" unless req.uri.to_s.include?('bandcamp.com/testuser')
+
+          success_response(collection_html)
+        end
+      end
+
+      it 'downloads only items matching a regex' do
+        downloaded_keys = []
+        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, _lib, _fmt, **_kw|
+          downloaded_keys << "#{item['sale_item_type']}#{item['sale_item_id']}"
+          :downloaded
+        end
+
+        run_cli(['--library', @library, '--filter', 'radiohead', 'testuser'])
+
+        expect(@exit_code).to eq(0)
+        expect(@err_string).to include('Matched 2 item(s) from collection.')
+        expect(@err_string).to include('Downloaded:  2')
+        expect(downloaded_keys).to contain_exactly('a100', 'a200')
+      end
+
+      it 'downloads nothing when the filter matches nothing' do
+        allow(BandcampDlRb::Downloader).to receive(:download_album)
+
+        run_cli(['--library', @library, '--filter', 'zzzz', 'testuser'])
+
+        expect(@exit_code).to eq(1)
+        expect(@err_string).to include('No matching items found for: zzzz')
+      end
+    end
   end
 
   describe '#print_dry_run' do
@@ -581,6 +666,64 @@ RSpec.describe BandcampDlRb::CLI do
       allow(client).to receive(:get_collection).and_return({})
       options = { username: 'testuser', items: 'a100', include_hidden: false }
       items = cli.send(:filter_collection_items, client, options)
+      expect(items).to be_nil
+    end
+  end
+
+  describe '#filter_collection_by_regex' do
+    let(:cli) { described_class.new(out: StringIO.new, err: StringIO.new) }
+    let(:client) { instance_double(BandcampDlRb::Client) }
+
+    before do
+      allow(client).to receive(:get_collection).and_return(
+        'a100' => {
+          'sale_item_type' => 'a', 'sale_item_id' => 100,
+          'band_name' => 'Radiohead', 'item_title' => 'Kid A'
+        },
+        'a200' => {
+          'sale_item_type' => 'a', 'sale_item_id' => 200,
+          'band_name' => 'Radiohead', 'item_title' => 'Amnesiac'
+        },
+        't300' => {
+          'sale_item_type' => 't', 'sale_item_id' => 300,
+          'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker'
+        }
+      )
+      allow(client).to receive(:filter_collection) do |items, pattern|
+        items.select { |_key, item| [item['band_name'], item['item_title']].join(' ').match?(pattern) }
+      end
+    end
+
+    it 'filters the collection by regex' do
+      options = { username: 'testuser', filter: 'amnesiac', include_hidden: false }
+      items = cli.send(:filter_collection_by_regex, client, options)
+      expect(items.keys).to eq(['a200'])
+    end
+
+    it 'matches against artist or title' do
+      options = { username: 'testuser', filter: 'aphex', include_hidden: false }
+      items = cli.send(:filter_collection_by_regex, client, options)
+      expect(items.keys).to eq(['t300'])
+    end
+
+    it 'returns nil when no items match' do
+      options = { username: 'testuser', filter: 'zzzz', include_hidden: false }
+      items = cli.send(:filter_collection_by_regex, client, options)
+      expect(items).to be_nil
+    end
+
+    it 'returns nil when collection is empty' do
+      allow(client).to receive(:get_collection).and_return({})
+      options = { username: 'testuser', filter: 'kid', include_hidden: false }
+      items = cli.send(:filter_collection_by_regex, client, options)
+      expect(items).to be_nil
+    end
+
+    it 'returns nil on an invalid regex' do
+      err = StringIO.new
+      invalid_cli = described_class.new(out: StringIO.new, err: err)
+      options = { username: 'testuser', filter: '[', include_hidden: false }
+      items = invalid_cli.send(:filter_collection_by_regex, client, options)
       expect(items).to be_nil
     end
   end

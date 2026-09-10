@@ -304,4 +304,49 @@ RSpec.describe BandcampDlRb::Client do
       expect(result).to eq({})
     end
   end
+
+  describe '#filter_collection' do
+    let(:items) do
+      {
+        'a100' => { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' },
+        'a200' => { 'band_name' => 'Radiohead', 'item_title' => 'Amnesiac' },
+        't300' => { 'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker' },
+        't400' => { 'band_name' => nil, 'item_title' => 'Kid A Mnesia' }
+      }
+    end
+
+    it 'matches on artist name' do
+      result = client.filter_collection(items, 'Aphex')
+      expect(result.keys).to eq(['t300'])
+    end
+
+    it 'matches on title' do
+      result = client.filter_collection(items, 'windowlicker')
+      expect(result.keys).to eq(['t300'])
+    end
+
+    it 'is case-insensitive' do
+      result = client.filter_collection(items, 'AMNESIAC')
+      expect(result.keys).to eq(['a200'])
+    end
+
+    it 'matches a substring anywhere in artist or title' do
+      result = client.filter_collection(items, 'kid')
+      expect(result.keys).to contain_exactly('a100', 't400')
+    end
+
+    it 'accepts a precompiled Regexp' do
+      result = client.filter_collection(items, Regexp.new('aphex', Regexp::IGNORECASE))
+      expect(result.keys).to eq(['t300'])
+    end
+
+    it 'returns empty hash when nothing matches' do
+      result = client.filter_collection(items, 'zzzz')
+      expect(result).to eq({})
+    end
+
+    it 'does not raise when a field is nil' do
+      expect { client.filter_collection(items, 'mnesia') }.not_to raise_error
+    end
+  end
 end
