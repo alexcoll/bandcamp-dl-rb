@@ -27,7 +27,8 @@ Metrics/MethodLength:
 Metrics/ClassLength:
   Max: 220
   Exclude:
-    - 'lib/bandcamp_dl_rb/cli.rb'
+    - 'lib/bandcamp_dl_rb/cli.rb' # CLI: options/run-loop surface
+    - 'lib/bandcamp_dl_rb/downloader.rb' # zone download+sidecar surface
 
 Metrics/CyclomaticComplexity:
   Exclude:

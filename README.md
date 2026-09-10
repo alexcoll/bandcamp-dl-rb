@@ -35,6 +35,9 @@ library.
    ```
 5. Writes a `.bandcamp-sync.json` state file so subsequent runs skip
    already-downloaded albums.
+6. Saves **cover art** (`cover.jpg`, fetched from Bandcamp's CDN) and a small
+   **`album.json`** sidecar (release date, label, credits, tracklist) next to
+   each album's audio.
 
 You can instead download a single album or track by passing its Bandcamp URL
 with `--url`, or pick specific items from your collection by ID with
@@ -293,6 +296,15 @@ bandcamp_dl_rb -l ~/Music/Bandcamp -j 4 yourname
 Keep `N` small (max `4`): Bandcamp throttles session endpoints, and each
 worker downloads both the zip and its metadata. Downloads are rate-limited as
 a side effect of the built-in retry/backoff in `Downloader`.
+
+### Cover art & album info
+
+Each downloaded album gets a `cover.jpg` (from Bandcamp's CDN, via the
+album's `art_id`) and an `album.json` sidecar with whatever metadata the
+download page exposes — artist, title, release date, label, credits, and the
+tracklist. If the CDN fetch fails, cover art is extracted from the album zip
+as a fallback. Existing albums are skipped by default; `--force` re-downloads
+and refreshes the sidecar.
 
 ---
 
