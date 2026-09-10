@@ -227,6 +227,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--until DATE`               | Only items purchased before `YYYY-MM-DD`                         |
 | `--url URL`                  | Download a specific album/track by Bandcamp URL (repeatable)     |
 | `--items IDS`                | Download specific collection items by ID, e.g. `a100,t200` (requires username) |
+| `--filter REGEX`             | Download only items whose artist or title matches a regex (requires username)  |
 | `-j, --jobs N`               | Download up to `N` albums in parallel (1-4, default: `1`)        |
 | `--force`                    | Re-download even if the album already exists                     |
 | `--dry-run`                  | List what would be downloaded without downloading                |
@@ -283,6 +284,23 @@ bandcamp_dl_rb -l ~/Music/Bandcamp --items a100,a200 yourname
 Downloading by item ID requires your Bandcamp username as the positional
 argument. Item IDs are the `sale_item_type` + `sale_item_id` pair Bandcamp
 uses internally (`a` = album, `t` = track).
+
+### By regex with `--filter`
+
+Download only the collection items whose artist or title matches a regex
+(case-insensitive):
+
+```bash
+# Every Radiohead album in your collection
+bandcamp_dl_rb -l ~/Music/Bandcamp --filter '^radiohead' yourname
+
+# Anything with 'acid' in the artist or title
+bandcamp_dl_rb -l ~/Music/Bandcamp --filter acid yourname
+```
+
+The regex is matched against `"artist title"` for each item, so you can match
+on both fields at once (e.g. `--filter 'radiohead.*amnesiac'`). An invalid
+regex or a filter that matches nothing exits non-zero and downloads nothing.
 
 ### Downloading in parallel
 

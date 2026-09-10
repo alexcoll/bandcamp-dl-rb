@@ -47,7 +47,8 @@ module BandcampDlRb
         username: nil,
         urls: [],
         items: nil,
-        jobs: 1
+        jobs: 1,
+        filter: nil
       }
 
       parser = build_parser(options)
@@ -64,17 +65,17 @@ module BandcampDlRb
     end
 
     def valid_mode?(options)
-      has_library = options[:library]
-      has_url_mode = options[:urls].any?
-      has_item_mode = !options[:items].nil?
-      has_username = !options[:username].nil?
-
-      return true if has_library && has_url_mode
-      return true if has_library && has_item_mode && has_username
-      return true if has_library && has_username
+      return true if valid_requirements?(options)
 
       @err.puts(options[:parser])
       false
+    end
+
+    def valid_requirements?(options)
+      return false unless options[:library]
+      return true if options[:urls].any?
+
+      !options[:username].nil?
     end
 
     def valid_jobs?(options)
@@ -102,6 +103,8 @@ module BandcampDlRb
                 resolve_url_items(client, options)
               elsif options[:items]
                 filter_collection_items(client, options)
+              elsif options[:filter]
+                filter_collection_by_regex(client, options)
               else
                 fetch_collection(client, options)
               end
@@ -133,16 +136,8 @@ module BandcampDlRb
     end
 
     def filter_collection_items(client, options)
-      BandcampDlRb.log "Fetching collection for #{options[:username]}..."
-      all_items = client.get_collection(
-        options[:username],
-        include_hidden: options[:include_hidden]
-      )
-
-      if all_items.empty?
-        BandcampDlRb.log "\nNo items found in collection. Check your username and ensure you're logged in."
-        return nil
-      end
+      all_items = get_all_collection(client, options)
+      return nil if all_items.empty?
 
       items = client.filter_by_ids(all_items, options[:items])
       if items.empty?
@@ -153,6 +148,41 @@ module BandcampDlRb
 
       BandcampDlRb.log "Matched #{items.length} item(s) from collection."
       items
+    end
+
+    def filter_collection_by_regex(client, options)
+      begin
+        regex = Regexp.new(options[:filter], Regexp::IGNORECASE)
+      rescue RegexpError => e
+        BandcampDlRb.log "Invalid --filter regex: #{e.message}"
+        return nil
+      end
+
+      all_items = get_all_collection(client, options)
+      return nil if all_items.empty?
+
+      items = client.filter_collection(all_items, regex)
+      if items.empty?
+        BandcampDlRb.log "\nNo matching items found for: #{options[:filter]}"
+        return nil
+      end
+
+      BandcampDlRb.log "Matched #{items.length} item(s) from collection."
+      items
+    end
+
+    def get_all_collection(client, options)
+      BandcampDlRb.log "Fetching collection for #{options[:username]}..."
+      all_items = client.get_collection(
+        options[:username],
+        include_hidden: options[:include_hidden]
+      )
+      if all_items.empty?
+        BandcampDlRb.log "\nNo items found in collection. Check your username and ensure you're logged in."
+        return {}
+      end
+
+      all_items
     end
 
     def resolve_url_items(client, options)
@@ -257,6 +287,9 @@ module BandcampDlRb
         end
         opts.on('--items IDS', 'Download specific items by ID, e.g. a100,t200 (requires username)') do |v|
           options[:items] = v
+        end
+        opts.on('--filter REGEX', 'Download only items whose artist or title matches REGEX (requires username)') do |v|
+          options[:filter] = v
         end
         opts.on('-v', '--verbose', 'Verbose output') { BandcampDlRb.verbose = true }
         opts.on('-h', '--help', 'Show this help') do
