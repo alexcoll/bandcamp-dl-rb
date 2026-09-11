@@ -195,6 +195,41 @@ RSpec.describe BandcampDlRb::Downloader do
       expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:failed)
     end
 
+    def leftover_temp_dirs
+      Dir.glob(File.join(Dir.tmpdir, 'bc*'))
+    end
+
+    it 'leaves no bc temp dir behind after a successful download' do
+      pagedata = {
+        'download_items' => [
+          { 'downloads' => { 'flac' => { 'url' => 'https://bcbits/track.flac', 'size_mb' => '10MB' } } }
+        ]
+      }
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(described_class).to receive(:download_file) do |_c, _url, dest|
+        File.write(dest, 'flacdata')
+        true
+      end
+
+      before = leftover_temp_dirs
+      expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:downloaded)
+      expect(leftover_temp_dirs).to eq(before)
+    end
+
+    it 'leaves no bc temp dir behind after a failed download' do
+      pagedata = {
+        'download_items' => [
+          { 'downloads' => { 'flac' => { 'url' => 'https://bcbits/kida.zip', 'size_mb' => '10MB' } } }
+        ]
+      }
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(described_class).to receive(:download_file).and_return(false)
+
+      before = leftover_temp_dirs
+      expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:failed)
+      expect(leftover_temp_dirs).to eq(before)
+    end
+
     it 'saves cover.jpg from CDN when art_id is present' do
       pagedata = {
         'download_items' => [
@@ -277,6 +312,36 @@ RSpec.describe BandcampDlRb::Downloader do
 
       described_class.download_album(client, item, @dest, 'flac')
       expect(File.read(File.join(album_dir, 'cover.jpg'))).to eq('existing-cover')
+    end
+  end
+
+  describe '.temp_dir_for' do
+    it 'returns a private temp dir under Dir.tmpdir' do
+      dir = described_class.temp_dir_for('sale_item_id' => 7)
+      expect(dir).to start_with(File.join(Dir.tmpdir, 'bc'))
+      expect(File.directory?(dir)).to be true
+      expect(File.stat(dir).mode & 0o777).to eq(0o700)
+    ensure
+      FileUtils.rm_rf(dir) if dir
+    end
+  end
+
+  describe '.download_to_temp' do
+    let(:download) { { url: 'https://bcbits/track.flac', format: 'flac' } }
+    let(:tmp_dir) { described_class.temp_dir_for({}) }
+
+    after { FileUtils.rm_rf(tmp_dir) }
+
+    it 'writes the temp file with private mode 0600' do
+      allow(described_class).to receive(:download_file) do |_c, _url, dest|
+        File.write(dest, 'flacdata')
+        true
+      end
+
+      tmp_file = described_class.download_to_temp(client, download, tmp_dir)
+
+      expect(File.read(tmp_file)).to eq('flacdata')
+      expect(File.stat(tmp_file).mode & 0o777).to eq(0o600)
     end
   end
 
