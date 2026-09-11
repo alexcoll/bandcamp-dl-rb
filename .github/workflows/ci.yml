@@ -41,3 +41,19 @@ jobs:
 
       - name: Run RSpec
         run: bundle exec rspec
+
+  manpage:
+    name: Manpage parity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Verify manpage documents every CLI option
+        run: bundle exec rspec spec/bandcamp_dl_rb/manpage_spec.rb
