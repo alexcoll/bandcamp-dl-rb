@@ -45,6 +45,14 @@ module BandcampDlRb
     attr_accessor :verbose
   end
 
+  def self.bc_host?(host)
+    host == 'bandcamp.com' || host.end_with?('.bandcamp.com')
+  end
+
+  def self.download_host?(host)
+    bc_host?(host) || host == 'bcbits.com' || host.end_with?('.bcbits.com')
+  end
+
   def self.log(msg)
     warn msg
   end
