@@ -11,19 +11,38 @@ RSpec.describe BandcampDlRb::Client do
   end
 
   describe '#get' do
-    it 'sets the Cookie header from the identity' do
-      req = nil
+    def capture_get_request(url)
+      request = nil
       allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
         http = double('http')
         allow(http).to receive(:request) do |r|
-          req = r
+          request = r
           instance_double(Net::HTTPSuccess, body: '{}')
         end
         block.call(http)
       end
+      client.get(url)
+      request
+    end
 
-      client.get('https://bandcamp.com/api/test')
+    it 'sets the Cookie header for bandcamp.com hosts' do
+      req = capture_get_request('https://bandcamp.com/api/test')
       expect(req['Cookie']).to eq('identity=test-identity-value')
+    end
+
+    it 'sets the Cookie header for *.bandcamp.com hosts' do
+      req = capture_get_request('https://radiohead.bandcamp.com/album/in-rainbows')
+      expect(req['Cookie']).to eq('identity=test-identity-value')
+    end
+
+    it 'omits the Cookie header for non-bandcamp hosts' do
+      req = capture_get_request('https://example.com/api/test')
+      expect(req['Cookie']).to be_nil
+    end
+
+    it 'omits the Cookie header for lookalike subdomains' do
+      req = capture_get_request('https://notbandcamp.com/api/test')
+      expect(req['Cookie']).to be_nil
     end
   end
 
@@ -55,19 +74,30 @@ RSpec.describe BandcampDlRb::Client do
   end
 
   describe '#post_json' do
-    it 'sends the Cookie header and a JSON body' do
-      req = nil
+    def capture_post_request(url)
+      request = nil
       allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
         http = double('http')
         allow(http).to receive(:request) do |r|
-          req = r
+          request = r
           instance_double(Net::HTTPSuccess, body: '{}')
         end
         block.call(http)
       end
+      client.post_json(url, { 'a' => 1 })
+      request
+    end
 
-      client.post_json('https://bandcamp.com/api/x', { 'a' => 1 })
+    it 'sends the Cookie header and a JSON body' do
+      req = capture_post_request('https://bandcamp.com/api/x')
       expect(req['Cookie']).to eq('identity=test-identity-value')
+      expect(req['Content-Type']).to eq('application/json')
+      expect(JSON.parse(req.body)).to eq('a' => 1)
+    end
+
+    it 'omits the Cookie header for non-bandcamp hosts' do
+      req = capture_post_request('https://example.com/api/x')
+      expect(req['Cookie']).to be_nil
       expect(req['Content-Type']).to eq('application/json')
       expect(JSON.parse(req.body)).to eq('a' => 1)
     end
@@ -347,6 +377,22 @@ RSpec.describe BandcampDlRb::Client do
 
     it 'does not raise when a field is nil' do
       expect { client.filter_collection(items, 'mnesia') }.not_to raise_error
+    end
+  end
+
+  describe 'host allowlisting' do
+    it 'matches bandcamp.com and its subdomains' do
+      expect(BandcampDlRb.bc_host?('bandcamp.com')).to be true
+      expect(BandcampDlRb.bc_host?('radiohead.bandcamp.com')).to be true
+      expect(BandcampDlRb.bc_host?('example.com')).to be false
+      expect(BandcampDlRb.bc_host?('notbandcamp.com')).to be false
+    end
+
+    it 'extends the allowlist to bcbits.com for downloads' do
+      expect(BandcampDlRb.download_host?('bandcamp.com')).to be true
+      expect(BandcampDlRb.download_host?('bcbits.com')).to be true
+      expect(BandcampDlRb.download_host?('d1.bcbits.com')).to be true
+      expect(BandcampDlRb.download_host?('example.com')).to be false
     end
   end
 end
