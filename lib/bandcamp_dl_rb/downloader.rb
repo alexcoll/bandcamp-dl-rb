@@ -11,15 +11,13 @@ module BandcampDlRb
 
     def self.download_file(client, url, dest_path, max_retries: 3)
       max_retries.times do |attempt|
-        resp = perform_download(client, url)
+        result = stream_download(client, url, dest_path)
 
-        if redirect_to?(resp)
-          url = resp['location']
+        return true if result == true
+
+        if result.is_a?(String)
+          url = result
           next
-        end
-        if success_response?(resp)
-          File.binwrite(dest_path, resp.body)
-          return true
         end
 
         BandcampDlRb.log_verbose "    Download error on attempt #{attempt + 1}"
@@ -28,17 +26,36 @@ module BandcampDlRb
       false
     end
 
-    def self.perform_download(client, url)
+    # Streams a download to +dest_path+ without buffering the body in memory.
+    # Returns +true+ on success, the redirect location when the server replies
+    # with a redirect, or +nil+ on failure.
+    def self.stream_download(client, url, dest_path)
       uri = URI.parse(url)
+      outcome = nil
       Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 120) do |http|
         req = Net::HTTP::Get.new(uri)
         req['Cookie'] = "identity=#{client.identity}" if BandcampDlRb.download_host?(uri.hostname)
         req['User-Agent'] = USER_AGENT
-        http.request(req)
+
+        http.request(req) do |resp|
+          outcome = if redirect_to?(resp)
+                      resp['location']
+                    elsif success_response?(resp)
+                      write_stream(resp, dest_path)
+                    end
+        end
       end
+      outcome
     rescue StandardError => e
       BandcampDlRb.log_verbose "    Download error: #{e.message}"
       nil
+    end
+
+    def self.write_stream(resp, dest_path)
+      File.open(dest_path, 'wb') do |file|
+        resp.read_body { |chunk| file.write(chunk) }
+      end
+      true
     end
 
     # Determines the byte size of a remote download without saving it, by
