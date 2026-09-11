@@ -266,8 +266,7 @@ module BandcampDlRb
     end
 
     def self.place_download(tmp_file, album_dir)
-      ext = File.extname(tmp_file)
-      if ext == '.zip'
+      if zip_file?(tmp_file)
         extract_zip(tmp_file, album_dir)
       else
         FileUtils.cp(tmp_file, album_dir)
@@ -276,6 +275,10 @@ module BandcampDlRb
       end
     ensure
       FileUtils.rm_rf(File.dirname(tmp_file))
+    end
+
+    def self.zip_file?(path)
+      File.open(path, 'rb') { |f| f.read(4) } == "PK\x03\x04"
     end
 
     def self.extract_zip(tmp_file, album_dir)

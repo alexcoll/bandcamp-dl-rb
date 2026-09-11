@@ -178,6 +178,31 @@ RSpec.describe BandcampDlRb::Downloader do
       expect(Dir.glob(File.join(extracted, '*.flac'))).not_to be_empty
     end
 
+    it 'extracts a flac-format album even though its content is a zip' do
+      pagedata = {
+        'download_items' => [
+          {
+            'downloads' => { 'flac' => { 'url' => 'https://bcbits/kida-file.flac', 'size_mb' => '10MB' } },
+            'trackinfo' => [{ 'title' => 'Everything In Its Right Place', 'duration' => 251, 'track_num' => 1 }]
+          }
+        ]
+      }
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+
+      allow(described_class).to receive(:download_file) do |_c, _url, dest|
+        Zip::File.open(dest, create: true) do |zip|
+          zip.get_output_stream('01 Everything In Its Right Place.flac') { |f| f.write('audio') }
+        end
+        true
+      end
+
+      expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:downloaded)
+
+      extracted = File.join(@dest, 'Radiohead', 'Kid A')
+      expect(File.read(File.join(extracted, '01 Everything In Its Right Place.flac'))).to eq('audio')
+      expect(File).not_to exist(File.join(extracted, 'download.flac'))
+    end
+
     it 'returns :unavailable when no format is available' do
       allow(client).to receive(:get_pagedata).and_return('download_items' => [])
       expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:unavailable)
@@ -480,6 +505,50 @@ RSpec.describe BandcampDlRb::Downloader do
       bad_zip = File.join(@dest, 'bad.zip')
       File.write(bad_zip, 'not a zip')
       expect(described_class.extract_zip(bad_zip, @dest)).to be false
+    end
+  end
+
+  describe '.place_download' do
+    around do |example|
+      Dir.mktmpdir do |dir|
+        @dest = dir
+        example.run
+      end
+    end
+
+    def tmp_file(named)
+      dir = File.join(@dest, 'tmp')
+      FileUtils.mkdir_p(dir)
+      File.join(dir, named)
+    end
+
+    it 'extracts a zip even when the file extension is .flac' do
+      file = tmp_file('download.flac')
+      Zip::File.open(file, create: true) do |zip|
+        zip.get_output_stream('01 Track.flac') { |f| f.write('audio') }
+      end
+
+      expect(described_class.place_download(file, @dest)).to be true
+      expect(File.read(File.join(@dest, '01 Track.flac'))).to eq('audio')
+      expect(File).not_to exist(File.join(@dest, 'download.flac'))
+    end
+
+    it 'extracts a zip with a .zip extension as before' do
+      file = tmp_file('download.zip')
+      Zip::File.open(file, create: true) do |zip|
+        zip.get_output_stream('01 Track.flac') { |f| f.write('audio') }
+      end
+
+      expect(described_class.place_download(file, @dest)).to be true
+      expect(File.read(File.join(@dest, '01 Track.flac'))).to eq('audio')
+    end
+
+    it 'copies a raw audio file without extracting' do
+      file = tmp_file('download.flac')
+      File.write(file, 'FLA-CONTENT')
+
+      expect(described_class.place_download(file, @dest)).to be true
+      expect(File.read(File.join(@dest, 'download.flac'))).to eq('FLA-CONTENT')
     end
   end
 
