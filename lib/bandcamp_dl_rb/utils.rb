@@ -5,9 +5,13 @@ module BandcampDlRb
     module_function
 
     # Replaces characters that are illegal in directory / file names on common
-    # filesystems so item titles can be used as paths.
+    # filesystems so item titles can be used as paths. Dot/dotdot segments are
+    # neutralized so a title can never resolve above its parent directory.
     def sanitize_path(name)
-      name.gsub(%r{[/\\:*?"<>|]}, '-').strip
+      cleaned = name.gsub(%r{[/\\:*?"<>|]}, '-')
+      cleaned = '-' if cleaned.match?(/\A[.\s]+\z/)
+      trimmed = cleaned.sub(/\A[.\s]+/, '').sub(/[.\s]+\z/, '')
+      trimmed.empty? ? '-' : trimmed
     end
 
     # Formats a byte count as a short, human-readable string (e.g. 1.3 MB).
