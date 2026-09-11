@@ -137,7 +137,9 @@ module BandcampDlRb
       (match[1].to_f * SIZE_UNITS[match[2].upcase]).to_i
     end
 
-    def self.download_album(client, item, dest_dir, format, force: false)
+    # rubocop:disable Metrics/ParameterLists
+    def self.download_album(client, item, dest_dir, format, force: false, unzip: true)
+      # rubocop:enable Metrics/ParameterLists
       album_dir = album_dir_for(item, dest_dir)
       label = album_label(album_dir)
       FileUtils.mkdir_p(album_dir)
@@ -162,7 +164,7 @@ module BandcampDlRb
       tmp_file = download_to_temp(client, dl, tmp_dir)
       return :failed unless tmp_file
 
-      placed = place_download(tmp_file, album_dir)
+      placed = place_download(tmp_file, album_dir, unzip: unzip)
       placed ? :downloaded : :failed
     end
 
@@ -265,9 +267,9 @@ module BandcampDlRb
       tmp_file
     end
 
-    def self.place_download(tmp_file, album_dir)
+    def self.place_download(tmp_file, album_dir, unzip: true)
       if zip_file?(tmp_file)
-        extract_zip(tmp_file, album_dir)
+        unzip ? extract_zip(tmp_file, album_dir) : keep_zip(tmp_file, album_dir)
       else
         FileUtils.cp(tmp_file, album_dir)
         BandcampDlRb.log "    Saved to #{album_dir}"
@@ -279,6 +281,17 @@ module BandcampDlRb
 
     def self.zip_file?(path)
       File.open(path, 'rb') { |f| f.read(4) } == "PK\x03\x04"
+    end
+
+    def self.keep_zip(tmp_file, album_dir)
+      dest = File.join(album_dir, zip_name(album_dir))
+      FileUtils.cp(tmp_file, dest)
+      BandcampDlRb.log "    Saved zip to #{dest}"
+      true
+    end
+
+    def self.zip_name(album_dir)
+      "#{File.basename(album_dir)}.zip"
     end
 
     def self.extract_zip(tmp_file, album_dir)

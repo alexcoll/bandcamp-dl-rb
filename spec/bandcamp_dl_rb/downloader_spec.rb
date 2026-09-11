@@ -203,6 +203,31 @@ RSpec.describe BandcampDlRb::Downloader do
       expect(File).not_to exist(File.join(extracted, 'download.flac'))
     end
 
+    it 'keeps the album zip when unzip is false' do
+      pagedata = {
+        'download_items' => [
+          {
+            'downloads' => { 'flac' => { 'url' => 'https://bcbits/kida-file.flac', 'size_mb' => '10MB' } },
+            'trackinfo' => [{ 'title' => 'Everything In Its Right Place', 'duration' => 251, 'track_num' => 1 }]
+          }
+        ]
+      }
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+
+      allow(described_class).to receive(:download_file) do |_c, _url, dest|
+        Zip::File.open(dest, create: true) do |zip|
+          zip.get_output_stream('01 Everything In Its Right Place.flac') { |f| f.write('audio') }
+        end
+        true
+      end
+
+      expect(described_class.download_album(client, item, @dest, 'flac', unzip: false)).to eq(:downloaded)
+
+      album_dir = File.join(@dest, 'Radiohead', 'Kid A')
+      expect(File.exist?(File.join(album_dir, 'Kid A.zip'))).to be true
+      expect(File).not_to exist(File.join(album_dir, '01 Everything In Its Right Place.flac'))
+    end
+
     it 'returns :unavailable when no format is available' do
       allow(client).to receive(:get_pagedata).and_return('download_items' => [])
       expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:unavailable)
@@ -549,6 +574,19 @@ RSpec.describe BandcampDlRb::Downloader do
 
       expect(described_class.place_download(file, @dest)).to be true
       expect(File.read(File.join(@dest, 'download.flac'))).to eq('FLA-CONTENT')
+    end
+
+    it 'keeps the zip instead of extracting when unzip is false' do
+      album_dir = File.join(@dest, 'Kid A')
+      FileUtils.mkdir_p(album_dir)
+      file = tmp_file('download.flac')
+      Zip::File.open(file, create: true) do |zip|
+        zip.get_output_stream('01 Track.flac') { |f| f.write('audio') }
+      end
+
+      expect(described_class.place_download(file, album_dir, unzip: false)).to be true
+      expect(File.exist?(File.join(album_dir, 'Kid A.zip'))).to be true
+      expect(File).not_to exist(File.join(album_dir, '01 Track.flac'))
     end
   end
 
