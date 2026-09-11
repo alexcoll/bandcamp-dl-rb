@@ -231,7 +231,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--url URL`                  | Download a specific album/track by Bandcamp URL (repeatable)     |
 | `--items IDS`                | Download specific collection items by ID, e.g. `a100,t200` (requires username) |
 | `--filter REGEX`             | Download only items whose artist or title matches a regex (requires username)  |
-| `-j, --jobs N`               | Download up to `N` albums in parallel (1-4, default: `1`)        |
+| `-j, --jobs N`               | Download up to `N` albums in parallel (1-16, default: `1`)       |
 | `--force`                    | Re-download even if the album already exists                     |
 | `--no-unzip`                 | Save album downloads as ZIPs without extracting track files      |
 | `--dry-run`                  | List what would be downloaded without downloading                |
@@ -310,15 +310,16 @@ regex or a filter that matches nothing exits non-zero and downloads nothing.
 ### Downloading in parallel
 
 Large collections download one album at a time by default. Pass `-j N` to
-download up to `N` albums concurrently:
+download up to `N` albums concurrently (`1`-`16`):
 
 ```bash
-bandcamp_dl_rb -l ~/Music/Bandcamp -j 4 yourname
+bandcamp_dl_rb -l ~/Music/Bandcamp -j 16 yourname
 ```
 
-Keep `N` small (max `4`): Bandcamp throttles session endpoints, and each
-worker downloads both the zip and its metadata. Downloads are rate-limited as
-a side effect of the built-in retry/backoff in `Downloader`.
+Downloads stream straight to disk, so parallelism isn't limited by RAM —
+bandwidth and Bandcamp's own throttling are the practical limits. Start with
+a modest `N` and raise it until you see download errors; stalled workers are
+retried with exponential backoff, which rate-limits automatically.
 
 ### Cover art & album info
 

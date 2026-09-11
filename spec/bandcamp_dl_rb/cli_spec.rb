@@ -164,9 +164,9 @@ RSpec.describe BandcampDlRb::CLI do
     it 'returns exit code 1 when --jobs is out of range' do
       err = StringIO.new
       out = StringIO.new
-      code = described_class.run(['--library', '/x', '--jobs', '5', 'u'], out: out, err: err)
+      code = described_class.run(['--library', '/x', '--jobs', '17', 'u'], out: out, err: err)
       expect(code).to eq(1)
-      expect(err.string).to include('--jobs must be between 1 and 4')
+      expect(err.string).to include('--jobs must be between 1 and 16')
     end
 
     it 'returns exit code 1 when --jobs is less than 1' do

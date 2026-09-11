@@ -3,7 +3,7 @@
 module BandcampDlRb
   # Command-line interface: argument parsing and the top-level run loop.
   class CLI
-    MAX_JOBS = 4
+    MAX_JOBS = 16
 
     def self.parse_args(argv = ARGV)
       new.parse_args(argv)

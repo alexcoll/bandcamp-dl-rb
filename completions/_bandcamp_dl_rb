@@ -16,7 +16,7 @@ _bandcamp_dl_rb() {
     '--force[Re-download even if album already exists]' \
     '--dry-run[Show what would be downloaded without downloading]' \
     '--url[Download a specific album/track by URL]:url' \
-    {-j,--jobs}'[Download N albums in parallel (1-4)]:jobs' \
+    {-j,--jobs}'[Download N albums in parallel (1-16)]:jobs' \
     '--items[Download specific items by ID]:ids' \
     '--filter[Download only items matching REGEX]:regex' \
     {-v,--verbose}'[Verbose output]' \
