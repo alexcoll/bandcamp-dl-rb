@@ -106,6 +106,16 @@ RSpec.describe BandcampDlRb::CLI do
       options = described_class.parse_args(['--library', '/x', '--filter', 'amd', 'u'])
       expect(options[:filter]).to eq('amd')
     end
+
+    it 'defaults unzip to true' do
+      options = described_class.parse_args(['--library', '/x', 'u'])
+      expect(options[:unzip]).to be true
+    end
+
+    it 'parses --no-unzip' do
+      options = described_class.parse_args(['--library', '/x', '--no-unzip', 'u'])
+      expect(options[:unzip]).to be false
+    end
   end
 
   describe '.run' do
@@ -386,6 +396,19 @@ RSpec.describe BandcampDlRb::CLI do
         downloaded = []
         downloaded << keys.pop until keys.empty?
         expect(downloaded).to contain_exactly('a100', 'a200', 't300')
+      end
+
+      it 'passes unzip: false to download_album with --no-unzip' do
+        received = []
+        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, _lib, _fmt, **kw|
+          received << [item['sale_item_id'], kw[:unzip]]
+          :downloaded
+        end
+
+        run_cli(['--library', @library, '--no-unzip', '--items', 'a100', 'testuser'])
+
+        expect(@exit_code).to eq(0)
+        expect(received).to eq([[100, false]])
       end
     end
 
