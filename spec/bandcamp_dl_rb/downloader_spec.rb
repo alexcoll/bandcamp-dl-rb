@@ -603,19 +603,31 @@ RSpec.describe BandcampDlRb::Downloader do
       success = double('success')
       allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
       allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
-      allow(success).to receive(:body).and_return(body)
+      allow(success).to receive(:read_body) { |&block| block.call(body) }
       success
+    end
+
+    def http_double(requests, host, &response_for)
+      http = double('http')
+      allow(http).to receive(:request) do |r, &caller_block|
+        requests[host] = r['Cookie']
+        response = response_for.call(r)
+        caller_block&.call(response)
+        response
+      end
+      http
+    end
+
+    def stub_start(requests, &)
+      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
+        block.call(http_double(requests, host, &))
+      end
     end
 
     def capture_requests(url, first_response, second_response)
       requests = {}
-      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
-        http = double('http')
-        allow(http).to receive(:request) do |r|
-          requests[host] = r['Cookie']
-          requests.size == 1 ? first_response : second_response
-        end
-        block.call(http)
+      stub_start(requests) do |_r|
+        requests.size == 1 ? first_response : second_response
       end
 
       Dir.mktmpdir do |dir|
@@ -626,15 +638,9 @@ RSpec.describe BandcampDlRb::Downloader do
     end
 
     it 'follows redirects and downloads the response body to the destination' do
-      success = success_double
-      redirect = redirect_double('https://final.example/file.flac')
-
-      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
-        http = double('http')
-        allow(http).to receive(:request) do
-          host == 'final.example' ? success : redirect
-        end
-        block.call(http)
+      requests = {}
+      stub_start(requests) do |_r|
+        requests.key?('final.example') ? success_double : redirect_double('https://final.example/file.flac')
       end
 
       Dir.mktmpdir do |dir|
@@ -642,6 +648,23 @@ RSpec.describe BandcampDlRb::Downloader do
         result = described_class.download_file(client, 'https://bcbits/start', dest, max_retries: 3)
         expect(result).to eq(true)
         expect(File.read(dest)).to eq('FLA-CONTENT')
+      end
+    end
+
+    it 'streams the body to the destination in chunks without buffering' do
+      success = success_double
+      allow(success).to receive(:read_body) do |&block|
+        %w[chunk-one- chunk-two- chunk-three].each { |chunk| block.call(chunk) }
+      end
+
+      requests = {}
+      stub_start(requests) { success }
+
+      Dir.mktmpdir do |dir|
+        dest = File.join(dir, 'out.flac')
+        result = described_class.download_file(client, 'https://bcbits/start', dest, max_retries: 1)
+        expect(result).to eq(true)
+        expect(File.read(dest)).to eq('chunk-one-chunk-two-chunk-three')
       end
     end
 
