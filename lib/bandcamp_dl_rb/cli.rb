@@ -43,6 +43,7 @@ module BandcampDlRb
         since: nil,
         until_date: nil,
         force: false,
+        unzip: true,
         dry_run: false,
         username: nil,
         urls: [],
@@ -279,6 +280,7 @@ module BandcampDlRb
           options[:until_date] = Date.parse(v)
         end
         opts.on('--force', 'Re-download even if album already exists') { options[:force] = true }
+        opts.on('--no-unzip', 'Save album downloads as ZIPs without extracting track files') { options[:unzip] = false }
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
         opts.on('--url URL', 'Download a specific album/track by Bandcamp URL (repeatable)') { |v| options[:urls] << v }
         opts.on('-j', '--jobs N', Integer,
@@ -357,7 +359,7 @@ module BandcampDlRb
     def download_items_serial(client, items, options)
       items.each_value do |item|
         result = Downloader.download_album(
-          client, item, options[:library], options[:format], force: options[:force]
+          client, item, options[:library], options[:format], force: options[:force], unzip: options[:unzip]
         )
         @stats[result] += 1
       end
@@ -377,7 +379,7 @@ module BandcampDlRb
         loop do
           item = queue.pop(true)
           result = Downloader.download_album(
-            client, item, options[:library], options[:format], force: options[:force]
+            client, item, options[:library], options[:format], force: options[:force], unzip: options[:unzip]
           )
           stats_mutex.synchronize { @stats[result] += 1 }
         rescue ThreadError
