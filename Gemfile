@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-ruby '>= 3.1'
+ruby '>= 3.4'
 
 gem 'rubyzip', '>= 2.3'
 gem 'sqlite3', '>= 1.6'

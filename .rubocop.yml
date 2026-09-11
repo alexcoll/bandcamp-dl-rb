@@ -2,7 +2,7 @@
 
 AllCops:
   NewCops: enable
-  TargetRubyVersion: 3.1
+  TargetRubyVersion: 3.4
   SuggestExtensions: true
 
 # ---- Style / layout (handled by --autocorrect) ----
