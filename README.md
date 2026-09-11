@@ -47,7 +47,7 @@ with `--url`, or pick specific items from your collection by ID with
 
 ## Requirements
 
-- **Ruby** 3.1 or newer
+- **Ruby** 3.4 or newer
 - **Bundler** (optional, but recommended)
 
 ### Install with Homebrew

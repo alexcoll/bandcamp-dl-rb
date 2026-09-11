@@ -16,7 +16,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
+          ruby-version: '3.4'
           bundler-cache: true
 
       - name: Run Rubocop
@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ruby: ['3.1', '3.3', '3.4', '4.0.6', 'head']
+        ruby: ['3.4', '4.0.6', 'head']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
+          ruby-version: '3.4'
           bundler-cache: true
 
       - name: Verify manpage documents every CLI option

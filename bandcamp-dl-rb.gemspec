@@ -15,7 +15,7 @@ Gem::Specification.new do |spec|
   spec.homepage = 'https://github.com/alexcoll/bandcamp-dl-rb'
   spec.license = 'GPL-3.0-only'
 
-  spec.required_ruby_version = '>= 3.1'
+  spec.required_ruby_version = '>= 3.4'
 
   spec.files = Dir['lib/**/*.rb'] + Dir['exe/*'] + Dir['completions/*'] + Dir['man/*'] + %w[README.md LICENSE]
   spec.bindir = 'exe'
