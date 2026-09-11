@@ -58,6 +58,51 @@ RSpec.describe BandcampDlRb::CookieExtractor::CookiesFile do
   end
 end
 
+RSpec.describe BandcampDlRb::CookieExtractor::TempCopy do
+  describe '.create' do
+    it 'writes a 0600 copy inside a 0700 temp dir' do
+      src = File.join(Dir.tmpdir, "temp_copy_src_#{Process.pid}.sqlite")
+      File.binwrite(src, "\x00cookie db")
+      dir = described_class.create(src, 'bc_temp_copy_')
+
+      file = File.join(dir, described_class::FILE_NAME)
+      expect(File.stat(dir).mode & 0o777).to eq(0o700)
+      expect(File.stat(file).mode & 0o777).to eq(0o600)
+      expect(File.binread(file)).to eq("\x00cookie db")
+    ensure
+      described_class.cleanup(dir) if dir
+      FileUtils.rm_f(src) if src && File.exist?(src)
+    end
+
+    it 'creates the copy in Dir.tmpdir with the given prefix' do
+      src = File.join(Dir.tmpdir, "temp_copy_src2_#{Process.pid}.sqlite")
+      File.binwrite(src, 'data')
+      dir = described_class.create(src, 'bc_temp_copy_')
+
+      expect(File.dirname(dir)).to eq(Dir.tmpdir)
+      expect(File.basename(dir)).to start_with('bc_temp_copy_')
+    ensure
+      described_class.cleanup(dir) if dir
+      FileUtils.rm_f(src) if src && File.exist?(src)
+    end
+  end
+
+  describe '.cleanup' do
+    it 'removes the temp dir and its copy' do
+      src = File.join(Dir.tmpdir, "temp_copy_src3_#{Process.pid}.sqlite")
+      File.binwrite(src, 'data')
+      dir = described_class.create(src, 'bc_temp_copy_')
+
+      described_class.cleanup(dir)
+
+      expect(Dir.exist?(dir)).to be(false)
+      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_temp_copy_*'))).to be_empty
+    ensure
+      FileUtils.rm_f(src) if src && File.exist?(src)
+    end
+  end
+end
+
 RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
   describe '.profile_dir' do
     after { stub_const('RUBY_PLATFORM', RUBY_PLATFORM) }
@@ -136,6 +181,26 @@ RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
     it 'returns nil when no profile has an identity cookie' do
       FileUtils.mkdir_p(profile_dir)
       expect(described_class.find(profile_dir)).to be_nil
+    end
+
+    it 'removes its private temp copy after a successful find' do
+      db = build_firefox_profile(profile_dir, 'abc.default-release')
+      insert_cookie(db, name: 'identity', value: 'FF-VALUE-123', host: '.bandcamp.com')
+      db.close
+
+      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
+      described_class.find(profile_dir)
+      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+    end
+
+    it 'removes its private temp copy after an error' do
+      broken_profile = File.join(profile_dir, 'broken.default')
+      FileUtils.mkdir_p(broken_profile)
+      File.binwrite(File.join(broken_profile, described_class::COOKIE_DB), 'not a sqlite db')
+
+      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
+      expect(described_class.find(profile_dir)).to be_nil
+      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
     end
   end
 end
@@ -281,6 +346,46 @@ RSpec.describe BandcampDlRb::CookieExtractor::Chrome do
       expect(described_class.find('chrome', empty_db, key)).to be_nil
     ensure
       FileUtils.rm_f(empty_db) if empty_db && File.exist?(empty_db)
+    end
+
+    it 'removes its private temp copy after a successful find' do
+      plaintext = 'CHROME-IDENTITY-789'
+
+      cipher = OpenSSL::Cipher.new('aes-128-cbc')
+      cipher.encrypt
+      cipher.key = key
+      cipher.iv = "\x20" * 16
+      encrypted = "v10#{cipher.update(plaintext) + cipher.final}"
+
+      cookie_db = File.join(Dir.tmpdir, "chrome_temp_cleanup_#{Process.pid}.sqlite")
+      db = SQLite3::Database.new(cookie_db)
+      db.execute_batch <<~SQL
+        CREATE TABLE cookies (
+          name TEXT, value TEXT, host_key TEXT, encrypted_value BLOB
+        );
+      SQL
+      db.execute(
+        "INSERT INTO cookies (name, host_key, encrypted_value) VALUES ('identity', '.bandcamp.com', ?)",
+        [encrypted]
+      )
+      db.close
+
+      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
+      expect(described_class.find('chrome', cookie_db, key)).to eq(plaintext)
+      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+    ensure
+      FileUtils.rm_f(cookie_db) if cookie_db && File.exist?(cookie_db)
+    end
+
+    it 'removes its private temp copy after an error' do
+      broken_db = File.join(Dir.tmpdir, "chrome_broken_#{Process.pid}.sqlite")
+      File.binwrite(broken_db, 'not a sqlite db')
+
+      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
+      expect(described_class.find('chrome', broken_db, key)).to be_nil
+      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+    ensure
+      FileUtils.rm_f(broken_db) if broken_db && File.exist?(broken_db)
     end
   end
 end
