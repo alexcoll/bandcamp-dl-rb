@@ -91,6 +91,48 @@ RSpec.describe BandcampDlRb::Downloader do
     end
   end
 
+  describe '.album_dir_for' do
+    around do |example|
+      Dir.mktmpdir do |dir|
+        @dest = dir
+        example.run
+      end
+    end
+
+    it 'builds Artist/Album under the destination dir' do
+      item = { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to eq(File.join(@dest, 'Radiohead', 'Kid A'))
+    end
+
+    it 'keeps a dotdot band name inside the destination dir' do
+      item = { 'band_name' => '..', 'item_title' => 'Kid A' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to start_with(@dest + File::SEPARATOR)
+    end
+
+    it 'keeps a dotdot item title inside the destination dir' do
+      item = { 'band_name' => 'Radiohead', 'item_title' => '..' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to start_with(@dest + File::SEPARATOR)
+    end
+
+    it 'keeps a dotdot band name and title together inside the destination dir' do
+      item = { 'band_name' => '. .', 'item_title' => '..' }
+      expect(described_class.album_dir_for(item, @dest))
+        .to start_with(@dest + File::SEPARATOR)
+    end
+
+    it 'falls back to placeholder names and warns when the path would escape' do
+      item = { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' }
+      allow(described_class).to receive(:contained_in?).and_return(false)
+      expect(BandcampDlRb).to receive(:log_verbose).with(/escapes library root/)
+
+      result = described_class.album_dir_for(item, @dest)
+      expect(result).to eq(File.join(@dest, 'Unknown Artist', 'Unknown Album'))
+    end
+  end
+
   describe '.download_album' do
     let(:item) do
       {
@@ -442,16 +484,43 @@ RSpec.describe BandcampDlRb::Downloader do
   end
 
   describe '.download_file' do
-    it 'follows redirects and downloads the response body to the destination' do
-      success = double('success')
-      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
-      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
-      allow(success).to receive(:body).and_return('FLA-CONTENT')
-
+    def redirect_double(location)
       redirect = double('redirect')
       allow(redirect).to receive(:is_a?).with(Net::HTTPRedirection).and_return(true)
       allow(redirect).to receive(:is_a?).with(Net::HTTPSuccess).and_return(false)
-      allow(redirect).to receive(:[]).with('location').and_return('https://final.example/file.flac')
+      allow(redirect).to receive(:[]).with('location').and_return(location)
+      redirect
+    end
+
+    def success_double(body = 'FLA-CONTENT')
+      success = double('success')
+      allow(success).to receive(:is_a?).with(Net::HTTPRedirection).and_return(false)
+      allow(success).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+      allow(success).to receive(:body).and_return(body)
+      success
+    end
+
+    def capture_requests(url, first_response, second_response)
+      requests = {}
+      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
+        http = double('http')
+        allow(http).to receive(:request) do |r|
+          requests[host] = r['Cookie']
+          requests.size == 1 ? first_response : second_response
+        end
+        block.call(http)
+      end
+
+      Dir.mktmpdir do |dir|
+        dest = File.join(dir, 'out.flac')
+        result = described_class.download_file(client, url, dest, max_retries: 3)
+        [result, requests]
+      end
+    end
+
+    it 'follows redirects and downloads the response body to the destination' do
+      success = success_double
+      redirect = redirect_double('https://final.example/file.flac')
 
       allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
         http = double('http')
@@ -467,6 +536,32 @@ RSpec.describe BandcampDlRb::Downloader do
         expect(result).to eq(true)
         expect(File.read(dest)).to eq('FLA-CONTENT')
       end
+    end
+
+    it 'keeps the cookie when redirecting to bcbits.com hosts' do
+      result, requests = capture_requests(
+        'https://bandcamp.com/start',
+        redirect_double('https://d1.bcbits.com/final.zip'),
+        success_double
+      )
+      expect(result).to eq(true)
+      expect(requests).to eq(
+        'bandcamp.com' => 'identity=ident',
+        'd1.bcbits.com' => 'identity=ident'
+      )
+    end
+
+    it 'drops the cookie when a redirect points off-allowlist' do
+      result, requests = capture_requests(
+        'https://bandcamp.com/start',
+        redirect_double('https://example.com/file.flac'),
+        success_double
+      )
+      expect(result).to eq(true)
+      expect(requests).to eq(
+        'bandcamp.com' => 'identity=ident',
+        'example.com' => nil
+      )
     end
   end
 
@@ -517,6 +612,54 @@ RSpec.describe BandcampDlRb::Downloader do
         end
       end
       expect(described_class.download_size(client, 'https://bcbits/start')).to eq(99)
+    end
+
+    it 'keeps the cookie when a size-check redirect stays on bcbits.com' do
+      requests = {}
+      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
+        http = double('http')
+        allow(http).to receive(:request) do |r|
+          requests[host] = r['Cookie']
+          if host == 'd1.bcbits.com'
+            response_double(redirects: false, success: true, partial: true,
+                            headers: { 'content-range' => 'bytes 0-0/99' })
+          else
+            response_double(redirects: true, success: false, partial: false,
+                            headers: { 'location' => 'https://d1.bcbits.com/file.flac' })
+          end
+        end
+        block.call(http)
+      end
+
+      expect(described_class.download_size(client, 'https://bcbits.com/start')).to eq(99)
+      expect(requests).to eq(
+        'bcbits.com' => 'identity=ident',
+        'd1.bcbits.com' => 'identity=ident'
+      )
+    end
+
+    it 'drops the cookie when a size-check redirect points off-allowlist' do
+      requests = {}
+      allow(Net::HTTP).to receive(:start) do |host, _port, **_opts, &block|
+        http = double('http')
+        allow(http).to receive(:request) do |r|
+          requests[host] = r['Cookie']
+          if host == 'example.com'
+            response_double(redirects: false, success: true, partial: true,
+                            headers: { 'content-range' => 'bytes 0-0/99' })
+          else
+            response_double(redirects: true, success: false, partial: false,
+                            headers: { 'location' => 'https://example.com/file.flac' })
+          end
+        end
+        block.call(http)
+      end
+
+      expect(described_class.download_size(client, 'https://bcbits.com/start')).to eq(99)
+      expect(requests).to eq(
+        'bcbits.com' => 'identity=ident',
+        'example.com' => nil
+      )
     end
 
     it 'returns nil when no size header is present' do

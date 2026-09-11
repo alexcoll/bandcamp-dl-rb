@@ -2,8 +2,6 @@
 
 require 'English'
 require 'json'
-require 'fileutils'
-require 'tmpdir'
 require 'openssl'
 require 'sqlite3'
 
@@ -80,9 +78,8 @@ module BandcampDlRb
       end
 
       def read_cookie(cookie_path, decryption_key)
-        tmp = copy_to_temp(cookie_path)
-        rows = query_identity(tmp)
-        FileUtils.rm_f(tmp)
+        dir = TempCopy.create(cookie_path, 'bc_chrome_cookies_')
+        rows = query_identity(File.join(dir, TempCopy::FILE_NAME))
 
         return nil unless rows.any? && rows[0][0]
 
@@ -90,14 +87,9 @@ module BandcampDlRb
         value if !value.nil? && !value.empty?
       rescue StandardError => e
         BandcampDlRb.log_verbose "  Chrome cookie read error: #{e.message}"
-        FileUtils.rm_f(tmp) if tmp
         nil
-      end
-
-      def copy_to_temp(cookie_path)
-        tmp = File.join(Dir.tmpdir, "bc_chrome_cookies_#{Process.pid}.sqlite")
-        FileUtils.cp(cookie_path, tmp)
-        tmp
+      ensure
+        TempCopy.cleanup(dir)
       end
 
       def query_identity(tmp)

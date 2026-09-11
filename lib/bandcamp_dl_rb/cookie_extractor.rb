@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'bandcamp_dl_rb/cookie_extractor/temp_copy'
 require 'bandcamp_dl_rb/cookie_extractor/firefox'
 require 'bandcamp_dl_rb/cookie_extractor/chrome'
 require 'bandcamp_dl_rb/cookie_extractor/safari'
