@@ -1,0 +1,243 @@
+.TH BANDCAMP_DL_RB 1 "2026-09-11" "bandcamp-dl-rb 0.7.0" "User Commands"
+.SH NAME
+bandcamp_dl_rb \- download your Bandcamp purchases into a Plex-friendly
+music library
+.SH SYNOPSIS
+.B bandcamp_dl_rb
+[\fIoptions\fR] \fIbandcamp-username\fR
+.br
+.B bandcamp_dl_rb
+[\fIoptions\fR] \fB\-\-url\fR \fIurl\fR ...
+.br
+.B bandcamp_dl_rb
+\fB\-h\fR | \fB\-\-help\fR
+.br
+.B bandcamp_dl_rb
+\fB\-V\fR | \fB\-\-version\fR
+.SH DESCRIPTION
+.B bandcamp_dl_rb
+authenticates to Bandcamp with your browser session cookie, scans your
+collection, and downloads each purchase as FLAC (or the best available format)
+into a clean
+.IR Artist / Album / track
+layout.
+.PP
+Provide your Bandcamp username to sync your whole collection, or pass specific
+album or track page URLs with
+.B \-\-url,
+item IDs with
+.B \-\-items,
+or a regex with
+.B \-\-filter
+to download exactly what you want.
+.PP
+A small state file,
+.BR .bandcamp\-sync.json ,
+is written into the library after each run so subsequent runs skip albums that
+are already present.
+.PP
+To find your username, visit bandcamp.com and look at your profile URL; it ends
+in your username (for example
+.IR https://bandcamp.com/yourname ).
+.SH AUTHENTICATION
+The official Bandcamp API is only for labels and merch partners, so this tool
+uses the same undocumented /api/fancollection/* endpoints the website does,
+authenticated with your session
+.B identity
+cookie.
+.IP \(bu 4
+The script extracts the cookie automatically from Firefox, then Safari (macOS
+only), then Chrome or Chromium. Use
+.B \-\-browser
+to force a specific browser.
+.IP \(bu 4
+If automatic extraction fails, export a Netscape-format cookies.txt with a
+browser extension and pass the file with
+.B \-\-cookie-file,
+or paste the raw
+.B identity
+cookie value found in DevTools (F12) \(-> Application \(-> Cookies \(->
+bandcamp.com.
+.PP
+The
+.B identity
+cookie is a full-session credential; treat it like a password. Do not commit
+it, share it, or leave it in shell history.
+.SH OPTIONS
+.SS Authentication
+.TP
+.BR \-c ", " \-\-cookie-file " " \fIPATH\fR
+Path to a Netscape-format cookies.txt file, or a raw
+.B identity
+cookie value.
+.TP
+.BR \-b ", " \-\-browser " " \fIBROWSER\fR
+Browser to extract cookies from:
+.BR firefox ", " chrome ", " chromium ", " safari ", or " auto
+(default:
+.BR auto ,
+which tries Firefox, then Safari, then Chrome; Safari is macOS-only).
+.SS Library and formats
+.TP
+.BR \-l ", " \-\-library " " \fIPATH\fR
+Plex library root path; required. Albums are written to
+.IR PATH / Artist / Album .
+.TP
+.BR \-f ", " \-\-format " " \fIFORMAT\fR
+Audio format to download (default:
+.BR flac ).
+If the exact format is unavailable, the script falls back through the quality
+ladder described in
+.BR FORMATS "."
+.SS What to download
+.TP
+.BI \-\-url " URL"
+Download a specific album or track by its Bandcamp page URL. Repeatable. The
+script finds the item in your collection and reports it as not found (and
+moves on) if it is not owned by your account.
+.TP
+.BR \-\-items " " \fIIDS\fR
+Download specific collection items by ID, for example
+.BR a100,t200 .
+Requires the username argument. IDs appear in
+.B \-\-dry-run
+output as
+.RI [a100]
+.I Artist\~\-~\~Album .
+.TP
+.BR \-\-filter " " \fIREGEX\fR
+Download only collection items whose artist or title matches the given regex
+(case-insensitive). Requires the username argument. The regex is matched
+against
+.IR "artist title" ,
+so it can match both fields, e.g.
+.BR 'radiohead.*amnesiac' .
+An invalid regex, or one that matches nothing, exits non-zero and downloads
+nothing.
+.TP
+.BR \-H ", " \-\-include-hidden
+Also download items hidden in your collection.
+.TP
+.BR \-\-since " " \fIDATE\fR
+Only items purchased on or after
+.IR YYYY-MM-DD .
+.TP
+.BR \-\-until " " \fIDATE\fR
+Only items purchased before
+.IR YYYY-MM-DD .
+.SS Behavior
+.TP
+.BR \-j ", " \-\-jobs " " \fIN\fR
+Download up to
+.I N
+albums in parallel (1-4, default:
+.BR 1 ).
+Keep
+.I N
+small; Bandcamp throttles session endpoints.
+.TP
+.B \-\-force
+Re-download even if the album already exists, and refresh the
+.B album.json
+sidecar.
+.TP
+.B \-\-dry-run
+List what would be downloaded, with item IDs and sizes, without downloading
+anything.
+.TP
+.BR \-v ", " \-\-verbose
+Verbose output.
+.SS Help and version
+.TP
+.BR \-h ", " \-\-help
+Show help and exit.
+.TP
+.BR \-V ", " \-\-version
+Show the version and exit.
+.SH FORMATS
+Supported formats:
+.PP
+.nf
+flac   mp3-320   mp3-v0   wav   aiff-lossless   aac-hi   alac   vorbis
+.fi
+.PP
+When the requested format is not available, the script falls back through this
+quality order:
+.PP
+.nf
+flac \(-> wav \(-> aiff-lossless \(-> alac \(-> aac-hi \(-> mp3-320 \(-> mp3-v0 \(-> vorbis
+.fi
+.PP
+If nothing is available, the album is reported as unavailable and skipped.
+.SH EXAMPLES
+Download the whole collection as FLAC:
+.PP
+.nf
+.RS 4
+bandcamp_dl_rb --library ~/Music/Bandcamp yourname
+.RE
+.fi
+.PP
+Only purchases since a date, as WAV:
+.PP
+.nf
+.RS 4
+bandcamp_dl_rb -l ~/Music/Bandcamp --since 2025-01-01 -f wav yourname
+.RE
+.fi
+.PP
+Download specific albums or tracks by URL:
+.PP
+.nf
+.RS 4
+bandcamp_dl_rb -l ~/Music/Bandcamp \\
+    --url https://radiohead.bandcamp.com/album/in-rainbows \\
+    --url https://aphextwin.bandcamp.com/track/windowlicker yourname
+.RE
+.fi
+.PP
+Preview the run without downloading:
+.PP
+.nf
+.RS 4
+bandcamp_dl_rb -l ~/Music/Bandcamp --dry-run yourname
+.RE
+.fi
+.PP
+Use a manual cookie file:
+.PP
+.nf
+.RS 4
+bandcamp_dl_rb -l ~/Music/Bandcamp --cookie-file /path/to/cookies.txt yourname
+.RE
+.fi
+.SH FILES
+.TP
+.I ~/Music/Bandcamp/.bandcamp-sync.json
+State file written after each run; used to skip already-downloaded albums.
+.SH EXIT STATUS
+.TP
+.B 0
+Success. Also returned by
+.B \-\-help
+and
+.BR \-\-version .
+.TP
+.B 1
+Failure: invalid arguments, no identity cookie found, no downloadable items
+found, or one or more downloads failed.
+.SH SEE ALSO
+The full documentation, including detailed notes on Firefox, Safari, Chrome,
+and manual cookie extraction, is available in the project README:
+.PP
+.RS 4
+https://github.com/alexcoll/bandcamp-dl-rb
+.RE
+.PP
+Shell completion files for bash, zsh, and fish ship with the gem in the
+.I completions
+directory.
+.SH CAVEATS
+This tool uses undocumented, unsupported Bandcamp endpoints that may change at
+any time. It is intended for downloading music you have already paid for into a
+personal, locally backed library.

@@ -58,6 +58,9 @@ brew install bandcamp-dl-rb
 
 # The `bandcamp_dl_rb` command is then on your PATH
 bandcamp_dl_rb --help
+
+# A manpage is installed too
+man bandcamp_dl_rb
 ```
 
 Updating later:
@@ -405,6 +408,16 @@ source (gem contents bandcamp_dl_rb | grep bandcamp_dl_rb.fish)
 Homebrew installs put the completions alongside the formula; for example,
 copy them into zsh's `fpath` if you don't use a completion framework.
 
+## Manpage
+
+A manpage (`man bandcamp_dl_rb`) ships with the gem in `man/`. Homebrew
+installs it into `share/man/man1/`, so it works out of the box. For a
+plain `gem install`, view it with:
+
+```bash
+man "$(gem contents bandcamp_dl_rb | grep bandcamp_dl_rb.1)"
+```
+
 ---
 
 ## Project layout
@@ -419,6 +432,7 @@ lib/bandcamp_dl_rb/cookie_extractor/   Per-browser extractors + cookies.txt pars
 lib/bandcamp_dl_rb/client.rb        HTTP client for the Bandcamp collection API
 lib/bandcamp_dl_rb/downloader.rb    Download + unzip + Artist/Album layout logic
 lib/bandcamp_dl_rb/utils.rb         Path sanitization helpers
+man/bandcamp_dl_rb.1                Manpage (roff source)
 spec/                                 RSpec tests (one spec per class)
 Gemfile / bandcamp-dl-rb.gemspec    Dependencies / packaging
 Rakefile                              Test task (rake spec)
