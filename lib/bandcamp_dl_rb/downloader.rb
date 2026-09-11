@@ -8,6 +8,7 @@ module BandcampDlRb
     AUDIO_EXTENSIONS = /\.(flac|mp3|wav|m4a|aiff|ogg)$/i
     COVER_EXTENSIONS = /\.(jpe?g|png)$/i
     COVER_CDN = 'https://f4.bcbits.com/img/a%s_10.jpg'
+    WRITE_BUFFER_SIZE = 1024 * 1024
 
     def self.download_file(client, url, dest_path, max_retries: 3)
       max_retries.times do |attempt|
@@ -51,9 +52,20 @@ module BandcampDlRb
       nil
     end
 
+    # Accumulates read_body chunks (Net::HTTP yields ~16KB) and writes them to
+    # disk in WRITE_BUFFER_SIZE batches so large downloads don't incur tens of
+    # thousands of tiny write syscalls.
     def self.write_stream(resp, dest_path)
       File.open(dest_path, 'wb') do |file|
-        resp.read_body { |chunk| file.write(chunk) }
+        buffer = +''
+        resp.read_body do |chunk|
+          buffer << chunk
+          next if buffer.bytesize < WRITE_BUFFER_SIZE
+
+          file.write(buffer)
+          buffer.clear
+        end
+        file.write(buffer) unless buffer.empty?
       end
       true
     end
