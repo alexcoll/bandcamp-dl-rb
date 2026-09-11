@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 3.1'
 
-  spec.files = Dir['lib/**/*.rb'] + Dir['exe/*'] + Dir['completions/*'] + %w[README.md LICENSE]
+  spec.files = Dir['lib/**/*.rb'] + Dir['exe/*'] + Dir['completions/*'] + Dir['man/*'] + %w[README.md LICENSE]
   spec.bindir = 'exe'
   spec.executables = ['bandcamp_dl_rb']
   spec.require_paths = ['lib']
