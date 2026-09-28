@@ -11,6 +11,7 @@ complete -c bandcamp_dl_rb -l force -d 'Re-download even if album already exists
 complete -c bandcamp_dl_rb -l dry-run -d 'Show what would be downloaded without downloading'
 complete -c bandcamp_dl_rb -l url -d 'Download a specific album/track by URL' -r
 complete -c bandcamp_dl_rb -s j -l jobs -d 'Download up to N albums in parallel (1-16)' -x -a '1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16'
+complete -c bandcamp_dl_rb -l page-size -d 'Request N collection items per page (1-500)' -x -a '100 200 500'
 complete -c bandcamp_dl_rb -l items -d 'Download specific collection items by ID' -r
 complete -c bandcamp_dl_rb -l filter -d 'Download only items matching a regex' -r
 complete -c bandcamp_dl_rb -s v -l verbose -d 'Verbose output'

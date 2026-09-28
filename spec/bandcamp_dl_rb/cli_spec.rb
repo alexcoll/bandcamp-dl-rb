@@ -45,6 +45,16 @@ RSpec.describe BandcampDlRb::CLI do
       expect(options[:browser]).to eq('auto')
     end
 
+    it 'defaults page size' do
+      options = described_class.parse_args(['--library', '/x', 'u'])
+      expect(options[:page_size]).to eq(BandcampDlRb::DEFAULT_PAGE_SIZE)
+    end
+
+    it 'accepts a custom page size' do
+      options = described_class.parse_args(['--library', '/x', '--page-size', '250', 'u'])
+      expect(options[:page_size]).to eq(250)
+    end
+
     it 'parses a single --url' do
       options = described_class.parse_args([
                                              '--library', '/x', '--url', 'https://radiohead.bandcamp.com/album/in-rainbows'
@@ -173,6 +183,21 @@ RSpec.describe BandcampDlRb::CLI do
       err = StringIO.new
       out = StringIO.new
       code = described_class.run(['--library', '/x', '--jobs', '0', 'u'], out: out, err: err)
+      expect(code).to eq(1)
+    end
+
+    it 'returns exit code 1 when --page-size is out of range' do
+      err = StringIO.new
+      out = StringIO.new
+      code = described_class.run(['--library', '/x', '--page-size', '9999', 'u'], out: out, err: err)
+      expect(code).to eq(1)
+      expect(err.string).to include('--page-size must be between 1 and 500')
+    end
+
+    it 'returns exit code 1 when --page-size is less than 1' do
+      err = StringIO.new
+      out = StringIO.new
+      code = described_class.run(['--library', '/x', '--page-size', '0', 'u'], out: out, err: err)
       expect(code).to eq(1)
     end
   end

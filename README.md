@@ -232,6 +232,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--items IDS`                | Download specific collection items by ID, e.g. `a100,t200` (requires username) |
 | `--filter REGEX`             | Download only items whose artist or title matches a regex (requires username)  |
 | `-j, --jobs N`               | Download up to `N` albums in parallel (1-16, default: `1`)       |
+| `--page-size N`              | Collection items per page request (1-500, default: `100`)        |
 | `--force`                    | Re-download even if the album already exists                     |
 | `--no-unzip`                 | Save album downloads as ZIPs without extracting track files      |
 | `--dry-run`                  | List what would be downloaded without downloading                |

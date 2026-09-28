@@ -189,6 +189,163 @@ RSpec.describe BandcampDlRb::Client do
     end
   end
 
+  # Bandcamp's collection endpoint treats `count` as a page size but advances
+  # its cursor by a fixed step, so a 100-item page yields only a handful of new
+  # items and the remainder repeat the previous page. A client that budgets
+  # requests against the item count advertised on the profile page therefore
+  # burns that budget on duplicates and truncates the walk; the server's
+  # `more_available` flag is the only authoritative end-of-collection signal.
+  describe '#get_collection pagination' do
+    let(:cursor_step) { 20 }
+    let(:total_items) { 172 }
+
+    let(:all_items) do
+      (0...total_items).map do |n|
+        {
+          'sale_item_type' => 'p',
+          'sale_item_id' => 1_000_000 + n,
+          'band_name' => "Artist #{n}",
+          'item_title' => "Album #{n}",
+          'tralbum_type' => 'a'
+        }
+      end
+    end
+
+    let(:pagedata) do
+      {
+        'collection_count' => total_items,
+        'fan_data' => { 'fan_id' => 123 },
+        'item_cache' => { 'collection' => {}, 'hidden' => {} },
+        'collection_data' => {
+          'item_count' => total_items, 'last_token' => 'tok-0', 'redownload_urls' => {}
+        },
+        'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
+      }
+    end
+
+    # One page as the real API serves it: a window of `count` items starting at
+    # the cursor, with the cursor then advanced by only `cursor_step`.
+    def page_for(token, count)
+      offset = token.split('-').last.to_i
+      window = all_items[offset, count] || []
+      next_offset = [offset + cursor_step, total_items].min
+      {
+        'items' => window,
+        'redownload_urls' => window.to_h { |i| [item_key(i), "https://bandcamp.com/r/#{i['sale_item_id']}"] },
+        'more_available' => next_offset < total_items,
+        'last_token' => "tok-#{next_offset}"
+      }
+    end
+
+    def item_key(item)
+      "#{item['sale_item_type']}#{item['sale_item_id']}"
+    end
+
+    def stub_overlapping_api(target, requests)
+      allow(target).to receive(:get_pagedata).and_return(pagedata)
+      allow(target).to receive(:fetch_collection_items) do |_fan_id, token, count|
+        requests << { token: token, count: count }
+        page_for(token, count)
+      end
+    end
+
+    it 'keeps paging past the first page until more_available is false' do
+      requests = []
+      stub_overlapping_api(client, requests)
+
+      items = client.get_collection('testuser')
+
+      expect(items.length).to eq(total_items)
+      expect(requests.length).to be > 1
+    end
+
+    it 'requests the configured page size on every page' do
+      requests = []
+      sized = described_class.new(identity, page_size: 7)
+      stub_overlapping_api(sized, requests)
+
+      sized.get_collection('testuser')
+
+      expect(requests.map { |r| r[:count] }).to all(eq(7))
+      expect(requests.length).to be > 1
+    end
+
+    it 'defaults the page size' do
+      requests = []
+      stub_overlapping_api(client, requests)
+
+      client.get_collection('testuser')
+
+      expect(requests.map { |r| r[:count] }.uniq).to eq([BandcampDlRb::DEFAULT_PAGE_SIZE])
+    end
+
+    it 'reaches the tail of the collection, not just the first page' do
+      requests = []
+      stub_overlapping_api(client, requests)
+
+      items = client.get_collection('testuser')
+
+      expect(items.keys).to include(item_key(all_items.last), item_key(all_items[-2]))
+    end
+
+    it 'stops when the cursor fails to advance' do
+      requests = []
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(client).to receive(:fetch_collection_items) do |_fan_id, _token, _count|
+        requests << 1
+        { 'items' => all_items.first(3), 'redownload_urls' => {},
+          'more_available' => true, 'last_token' => 'tok-0' }
+      end
+
+      client.get_collection('testuser')
+
+      expect(requests.length).to eq(1)
+    end
+
+    it 'stops on an empty page even when more_available is set' do
+      requests = []
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(client).to receive(:fetch_collection_items) do |_fan_id, _token, _count|
+        requests << 1
+        { 'items' => [], 'redownload_urls' => {}, 'more_available' => true, 'last_token' => 'tok-9' }
+      end
+
+      client.get_collection('testuser')
+
+      expect(requests.length).to eq(1)
+    end
+
+    it 'stops when a page returns no token' do
+      requests = []
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(client).to receive(:fetch_collection_items) do |_fan_id, _token, _count|
+        requests << 1
+        { 'items' => all_items.first(3), 'redownload_urls' => {},
+          'more_available' => true, 'last_token' => nil }
+      end
+
+      client.get_collection('testuser')
+
+      expect(requests.length).to eq(1)
+    end
+
+    it 'survives a null hidden item_count' do
+      pagedata['collection_data'] = { 'item_count' => 1, 'last_token' => 'tok-0', 'redownload_urls' => {} }
+      pagedata['hidden_data'] = { 'item_count' => nil, 'last_token' => nil }
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(client).to receive(:fetch_collection_items).and_return(
+        'items' => [{ 'sale_item_type' => 'p', 'sale_item_id' => 1, 'band_name' => 'A',
+                      'item_title' => 'B', 'tralbum_type' => 'a' }],
+        'redownload_urls' => { 'p1' => 'https://bandcamp.com/redownload/1' },
+        'more_available' => false,
+        'last_token' => nil
+      )
+      allow(client).to receive(:fetch_hidden_items).and_return('items' => [])
+
+      expect { client.get_collection('testuser', include_hidden: true) }.not_to raise_error
+    end
+  end
+
   describe '#get_html' do
     it 'returns the response body on success' do
       resp = instance_double(Net::HTTPSuccess, body: '<html>OK</html>')

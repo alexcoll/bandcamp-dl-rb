@@ -41,6 +41,12 @@ module BandcampDlRb
   AUDIO_EXTENSIONS = /\.(flac|mp3|wav|m4a|aiff|ogg)$/i
   QUALITY_ORDER = %w[flac wav aiff-lossless alac aac-hi mp3-320 mp3-v0 vorbis].freeze
 
+  # Collection paging. Bandcamp's fancollection endpoints treat `count` as a
+  # page size whose pages overlap, so the only reliable end-of-collection
+  # signal is the response's own `more_available` flag.
+  DEFAULT_PAGE_SIZE = 100
+  MAX_PAGE_SIZE = 500
+
   class << self
     attr_accessor :verbose
   end
