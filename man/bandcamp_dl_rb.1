@@ -157,6 +157,12 @@ sidecar.
 Save album downloads as ZIP archives (named after the album) instead of
 extracting track files.
 .TP
+.B \-\-entry-encoding \fIENC\fR
+Source encoding for zip entry names that are not valid UTF-8, such as
+CP932/Shift-JIS archives from Japanese Windows tooling. By default entry
+names are decoded by trying CP932 then CP437; give an explicit encoding to
+override that. Ignored when \-\-no-unzip is used.
+.TP
 .B \-\-dry-run
 List what would be downloaded, with item IDs and sizes, without downloading
 anything.

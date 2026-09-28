@@ -1,9 +1,93 @@
 # frozen_string_literal: true
 
 require_relative '../spec_helper'
+# Builds a zip archive by hand so entries can carry raw non-UTF-8 name bytes
+# with the UTF-8 general-purpose flag (bit 11) clear, which is what a
+# Shift-JIS/CP932 archive written on Japanese Windows looks like. rubyzip
+# always writes valid UTF-8 names, so it cannot produce this fixture.
+module RawZipFixture
+  LOCAL_FIXED = 30
+  CENTRAL_FIXED = 46
+  EOCD_FIXED = 22
+
+  module_function
+
+  def build_zip(path, entries)
+    io = StringIO.new(+''.b)
+    central = entries.map { |name, payload| write_local_entry(io, name, payload) }
+    cd_offset = io.size
+    central.each { |c| write_central_entry(io, c) }
+    write_eocd(io, central.length, io.size - cd_offset, cd_offset)
+    File.binwrite(path, io.string)
+    path
+  end
+
+  # version, flags, method, modtime, moddate, crc, csize, usize, namelen, extralen
+  def write_local_entry(io, name, payload)
+    offset = io.size
+    io.write("PK\x03\x04".b)
+    io.write([20, 0, 0, 0, 0, 0, payload.bytesize, payload.bytesize,
+              name.bytesize, 0].pack('vvvvvVVVvv'))
+    io.write(name)
+    io.write(payload)
+    [name, offset, payload.bytesize]
+  end
+
+  # made-by, version, flags, method, modtime, moddate, crc, csize, usize,
+  # namelen, extralen, commentlen, disk, internal, external, offset
+  def write_central_entry(io, central)
+    name, offset, len = central
+    io.write("PK\x01\x02".b)
+    io.write([20, 20, 0, 0, 0, 0, 0, len, len, name.bytesize, 0, 0, 0, 0, 0,
+              offset].pack('vvvvvvVVVvvvvvVV'))
+    io.write(name)
+  end
+
+  def write_eocd(io, count, cd_size, cd_offset)
+    io.write("PK\x05\x06".b)
+    io.write([0, 0, count, count, cd_size, cd_offset, 0].pack('vvvvVVv'))
+  end
+end
+
+# CP932 bytes, as written by Japanese Windows tooling.
+CP932_TRACK = "01 \x83e\x83X\x83g - \x83T\x83O\x83b\x83L.flac".b.freeze
+# CP437 bytes for a DOS-era accented title. 0xE9 is Theta, not e-acute.
+CP437_TRACK = "01 Caf\xe9 - Track.mp3".b.freeze
 
 RSpec.describe BandcampDlRb::Downloader do
   let(:client) { BandcampDlRb::Client.new('ident') }
+
+  include RawZipFixture
+
+  # Guards the hand-rolled archive: a malformed fixture would make every
+  # encoding example below pass or fail for the wrong reason.
+  describe 'the raw-encoding zip fixture' do
+    around do |example|
+      Dir.mktmpdir do |dir|
+        @dir = dir
+        example.run
+      end
+    end
+
+    it 'round-trips names and payloads through rubyzip' do
+      path = build_zip(File.join(@dir, 'a.zip'),
+                       [[CP932_TRACK, 'audio'], ['cover.jpg'.b, 'cover']])
+      seen = {}
+      Zip::File.open(path) { |z| z.each { |e| seen[e.name] = e.get_input_stream.read } }
+      expect(seen.keys.map(&:encoding)).to all(eq(Encoding::ASCII_8BIT))
+      expect(seen[CP932_TRACK]).to eq('audio')
+      expect(seen['cover.jpg'.b]).to eq('cover')
+    end
+
+    it 'uses the correct fixed header sizes' do
+      name = 'x.flac'.b
+      raw = File.binread(build_zip(File.join(@dir, 'b.zip'), [[name, 'y']]))
+      n = name.bytesize
+      expect(raw.bytesize)
+        .to eq(RawZipFixture::LOCAL_FIXED + n + 1 + RawZipFixture::CENTRAL_FIXED + n +
+               RawZipFixture::EOCD_FIXED)
+    end
+  end
 
   describe '.get_download_url' do
     let(:pagedata) do
@@ -567,6 +651,94 @@ RSpec.describe BandcampDlRb::Downloader do
       bad_zip = File.join(@dest, 'bad.zip')
       File.write(bad_zip, 'not a zip')
       expect(described_class.extract_zip(bad_zip, @dest)).to be false
+    end
+
+    it 'extracts CP932 entry names into a multibyte album directory' do
+      album_dir = File.join(@dest, '小鬼', 'Linux舟')
+      FileUtils.mkdir_p(album_dir)
+      zip_path = File.join(@dest, 'album.zip')
+      build_zip(zip_path, [[CP932_TRACK, 'audio'], ['cover.jpg'.b, 'zipcover']])
+
+      expect(described_class.extract_zip(zip_path, album_dir)).to be true
+      expected = "01 \u30c6\u30b9\u30c8 - \u30b5\u30b0\u30c3\u30ad.flac"
+      expect(File.read(File.join(album_dir, expected))).to eq('audio')
+      expect(File.read(File.join(album_dir, 'cover.jpg'))).to eq('zipcover')
+    end
+
+    it 'falls back to CP437 when the bytes are not valid CP932' do
+      album_dir = File.join(@dest, 'Caf\u00c9', 'Ambiance')
+      FileUtils.mkdir_p(album_dir)
+      zip_path = File.join(@dest, 'album.zip')
+      build_zip(zip_path, [[CP437_TRACK, 'audio']])
+
+      expect(described_class.extract_zip(zip_path, album_dir)).to be true
+      expect(Dir.children(album_dir).length).to eq(1)
+      expect(File.read(File.join(album_dir, Dir.children(album_dir).first))).to eq('audio')
+    end
+
+    it 'honours an explicit entry encoding' do
+      album_dir = File.join(@dest, 'Caf\u00c9', 'Ambiance')
+      FileUtils.mkdir_p(album_dir)
+      zip_path = File.join(@dest, 'album.zip')
+      build_zip(zip_path, [[CP437_TRACK, 'audio']])
+
+      expect(described_class.extract_zip(zip_path, album_dir, encoding: 'CP437')).to be true
+      expect(File.read(File.join(album_dir, "01 Caf\u0398 - Track.mp3"))).to eq('audio')
+    end
+
+    it 'keeps the file extension when a name cannot be decoded at all' do
+      album_dir = File.join(@dest, 'Mystery', 'Album')
+      FileUtils.mkdir_p(album_dir)
+      zip_path = File.join(@dest, 'album.zip')
+      build_zip(zip_path, [["\x81\x20\xff\xfe broken.flac".b, 'audio']])
+
+      expect(described_class.extract_zip(zip_path, album_dir, encoding: 'UTF-8')).to be true
+      extracted = Dir.children(album_dir)
+      expect(extracted.length).to eq(1)
+      expect(extracted.first).to end_with('.flac')
+      expect(File.read(File.join(album_dir, extracted.first))).to eq('audio')
+    end
+
+    it 'strips path separators and reserved characters from entry names' do
+      album_dir = File.join(@dest, 'Artist', 'Album')
+      FileUtils.mkdir_p(album_dir)
+      zip_path = File.join(@dest, 'album.zip')
+      build_zip(zip_path, [['we:ird|name.flac'.b, 'audio']])
+
+      expect(described_class.extract_zip(zip_path, album_dir)).to be true
+      expect(Dir.children(album_dir)).to eq(['we_ird_name.flac'])
+    end
+
+    it 'refuses to write outside the album directory' do
+      album_dir = File.join(@dest, 'Artist', 'Album')
+      FileUtils.mkdir_p(album_dir)
+      zip_path = File.join(@dest, 'album.zip')
+      build_zip(zip_path, [['../../escaped.flac'.b, 'audio']])
+
+      expect(described_class.extract_zip(zip_path, album_dir)).to be true
+      expect(File.read(File.join(album_dir, 'escaped.flac'))).to eq('audio')
+      expect(File).not_to exist(File.join(@dest, 'escaped.flac'))
+    end
+  end
+
+  describe '.entry_basename' do
+    it 'passes valid UTF-8 through untouched' do
+      expect(described_class.entry_basename('01 トラック.flac'.b)).to eq('01 トラック.flac')
+    end
+
+    it 'decodes CP932 when no encoding is given' do
+      expect(described_class.entry_basename(CP932_TRACK))
+        .to eq("01 \u30c6\u30b9\u30c8 - \u30b5\u30b0\u30c3\u30ad.flac")
+    end
+
+    it 'scrubs rather than raising when the named encoding is unusable' do
+      result = described_class.entry_basename(CP932_TRACK, 'NOPE-8')
+      expect(result).to be_valid_encoding
+      expect(result).to end_with('.flac')
+    end
+
+    it 'returns nil for a name that is only separators' do
+      expect(described_class.entry_basename('/.././/')).to be_nil
     end
   end
 

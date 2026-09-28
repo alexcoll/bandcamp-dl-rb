@@ -3,7 +3,7 @@ _bandcamp_dl_rb() {
   cur="${COMP_WORDS[COMP_CWORD]}"
 
   local opts="--library --format --browser --cookie-file --include-hidden \
---since --until --force --dry-run --url --jobs --page-size --items --filter \
+--since --until --force --dry-run --url --jobs --page-size --entry-encoding --items --filter \
 --verbose --help --version"
   local formats="flac wav aiff-lossless mp3-320 mp3-v0 aac-hi alac vorbis"
   local browsers="firefox chrome chromium safari auto"
@@ -11,7 +11,7 @@ _bandcamp_dl_rb() {
   case "$prev" in
     --format|-f) COMPREPLY=( $(compgen -W "$formats" -- "$cur") ); return ;;
     --browser|-b) COMPREPLY=( $(compgen -W "$browsers" -- "$cur") ); return ;;
-    --library|-l|--cookie-file|-c|--url|--since|--until|--jobs|--page-size|--items|--filter)
+    --library|-l|--cookie-file|-c|--url|--since|--until|--jobs|--page-size|--entry-encoding|--items|--filter)
       return ;;
   esac
 
