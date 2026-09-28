@@ -110,17 +110,26 @@ module BandcampDlRb
       {
         'band_name' => data['artist'],
         'item_title' => data.dig('current', 'title'),
-        'sale_item_id' => data['id'],
-        'sale_item_type' => data['item_type'] == 'album' ? 'a' : 't'
+        'tralbum_id' => data['id'],
+        'tralbum_type' => data['item_type'] == 'album' ? 'a' : 't'
       }
     rescue StandardError => e
       BandcampDlRb.log_verbose "  Error parsing tralbum data: #{e.message}"
       nil
     end
 
+    # Collection entries are keyed by sale item ("p403398974"), a different
+    # keyspace from the tralbum id carried by a Bandcamp page URL
+    # ("a1546900568"), so the two are joined on the tralbum identity that every
+    # collection item also carries.
     def find_item_in_collection(items, tralbum)
-      key = "#{tralbum['sale_item_type']}#{tralbum['sale_item_id']}"
-      items[key]
+      tralbum_id = tralbum['tralbum_id'].to_s
+      tralbum_type = tralbum['tralbum_type'].to_s
+      return nil if tralbum_id.empty?
+
+      items.values.find do |item|
+        item['tralbum_id'].to_s == tralbum_id && item['tralbum_type'].to_s == tralbum_type
+      end
     end
 
     def filter_by_ids(items, item_ids)

@@ -371,7 +371,7 @@ RSpec.describe BandcampDlRb::Client do
   end
 
   describe '#parse_tralbum' do
-    it 'extracts artist, title, id, and item_type from album page HTML' do
+    it 'extracts artist, title, tralbum id and type from album page HTML' do
       tralbum_data = {
         'artist' => 'Radiohead',
         'current' => { 'title' => 'In Rainbows' },
@@ -387,12 +387,12 @@ RSpec.describe BandcampDlRb::Client do
       expect(result).to eq(
         'band_name' => 'Radiohead',
         'item_title' => 'In Rainbows',
-        'sale_item_id' => 2_162_872_411,
-        'sale_item_type' => 'a'
+        'tralbum_id' => 2_162_872_411,
+        'tralbum_type' => 'a'
       )
     end
 
-    it 'maps item_type "track" to sale_item_type "t"' do
+    it 'maps item_type "track" to tralbum_type "t"' do
       tralbum_data = {
         'artist' => 'Aphex Twin',
         'current' => { 'title' => 'Windowlicker' },
@@ -402,7 +402,7 @@ RSpec.describe BandcampDlRb::Client do
       html = %(<div data-tralbum='#{CGI.escapeHTML(JSON.generate(tralbum_data))}'></div>)
 
       result = client.parse_tralbum(html)
-      expect(result['sale_item_type']).to eq('t')
+      expect(result['tralbum_type']).to eq('t')
     end
 
     it 'returns nil when data-tralbum attribute is missing' do
@@ -415,40 +415,54 @@ RSpec.describe BandcampDlRb::Client do
     end
   end
 
+  # A collection entry is keyed by sale item ("p403398974") while a Bandcamp
+  # page URL carries a tralbum id ("a1546900568"). The two keyspaces never
+  # overlap, so the lookup has to join on tralbum_id/tralbum_type.
   describe '#find_item_in_collection' do
     let(:items) do
       {
-        'a100' => {
-          'sale_item_type' => 'a', 'sale_item_id' => 100,
-          'band_name' => 'Radiohead', 'item_title' => 'Kid A'
+        'p403398974' => {
+          'sale_item_type' => 'p', 'sale_item_id' => 403_398_974,
+          'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a',
+          'band_name' => 'Dizgo', 'item_title' => '03/21/26 - Globe Hall - Denver, CO'
         },
-        't200' => {
-          'sale_item_type' => 't', 'sale_item_id' => 200,
+        'i390012675' => {
+          'sale_item_type' => 'i', 'sale_item_id' => 390_012_675,
+          'tralbum_id' => 1_188_310_021, 'tralbum_type' => 't',
           'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker'
         }
       }
     end
 
-    it 'finds an album by sale_item_id and type' do
-      tralbum = { 'sale_item_type' => 'a', 'sale_item_id' => 100 }
-      result = client.find_item_in_collection(items, tralbum)
-      expect(result).to eq(items['a100'])
+    it 'finds a purchased album by tralbum id and type' do
+      tralbum = { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a' }
+      expect(client.find_item_in_collection(items, tralbum)).to eq(items['p403398974'])
     end
 
-    it 'finds a track by sale_item_id and type' do
-      tralbum = { 'sale_item_type' => 't', 'sale_item_id' => 200 }
-      result = client.find_item_in_collection(items, tralbum)
-      expect(result).to eq(items['t200'])
+    it 'finds an item whose sale_item_type is i' do
+      tralbum = { 'tralbum_id' => 1_188_310_021, 'tralbum_type' => 't' }
+      expect(client.find_item_in_collection(items, tralbum)).to eq(items['i390012675'])
     end
 
     it 'returns nil when no match exists' do
-      tralbum = { 'sale_item_type' => 'a', 'sale_item_id' => 999 }
+      tralbum = { 'tralbum_id' => 999, 'tralbum_type' => 'a' }
       expect(client.find_item_in_collection(items, tralbum)).to be_nil
     end
 
-    it 'returns nil when type does not match' do
-      tralbum = { 'sale_item_type' => 't', 'sale_item_id' => 100 }
+    it 'returns nil when the tralbum type does not match' do
+      tralbum = { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 't' }
       expect(client.find_item_in_collection(items, tralbum)).to be_nil
+    end
+
+    it 'returns nil when the tralbum id is missing' do
+      expect(client.find_item_in_collection(items, { 'tralbum_type' => 'a' })).to be_nil
+    end
+
+    it 'does not match on the sale item key the tralbum id would form' do
+      # The old lookup built "a1546900568" and asked for that key, which can
+      # never be a collection key.
+      tralbum = { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a' }
+      expect(items.keys).not_to include("a#{tralbum['tralbum_id']}")
     end
   end
 
