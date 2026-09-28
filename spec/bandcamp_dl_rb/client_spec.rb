@@ -175,9 +175,14 @@ RSpec.describe BandcampDlRb::Client do
       pagedata['visible_item_count'] = nil
       pagedata['hidden_data'] = {
         'item_count' => 1,
-        'last_token' => nil,
-        'redownload_urls' => { 'a300' => 'https://bandcamp.com/redownload/3' }
+        'last_token' => nil
       }
+      # A hidden item's download URL comes from collection_data['redownload_urls'],
+      # the same map as visible items. hidden_data has no 'redownload_urls' key at
+      # all -- verified against live pagedata -- so there is no hidden-specific map
+      # to read from. Do not add one here; a phantom entry is ignored by
+      # merge_hidden_items and makes this example look like it covers a code path
+      # that does not exist.
       pagedata['collection_data']['redownload_urls'] = {
         'a100' => 'https://bandcamp.com/redownload/1',
         'a300' => 'https://bandcamp.com/redownload/3'
@@ -185,6 +190,26 @@ RSpec.describe BandcampDlRb::Client do
 
       items = client.get_collection('testuser', include_hidden: true)
       expect(items.keys).to include('a300')
+      expect(items['a300']['redownload_url']).to eq('https://bandcamp.com/redownload/3')
+    end
+
+    it 'takes a hidden item download URL from collection_data, not hidden_data' do
+      pagedata['item_cache']['hidden'] = {
+        'a300' => {
+          'sale_item_type' => 'a',
+          'sale_item_id' => 300,
+          'band_name' => 'Hidden Artist',
+          'item_title' => 'Hidden Album',
+          'tralbum_type' => 'a'
+        }
+      }
+      pagedata['visible_item_count'] = nil
+      pagedata['hidden_data'] = { 'item_count' => 1, 'last_token' => nil }
+      pagedata['collection_data']['redownload_urls'] = {
+        'a300' => 'https://bandcamp.com/redownload/3'
+      }
+
+      items = client.get_collection('testuser', include_hidden: true)
       expect(items['a300']['redownload_url']).to eq('https://bandcamp.com/redownload/3')
     end
   end
