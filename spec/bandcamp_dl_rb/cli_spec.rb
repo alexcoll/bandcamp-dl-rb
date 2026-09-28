@@ -688,6 +688,50 @@ RSpec.describe BandcampDlRb::CLI do
       items = cli.send(:resolve_url_items, client, options)
       expect(items.length).to eq(2)
     end
+
+    it 'fetches the collection once for multiple URLs' do
+      allow(client).to receive(:get_html).and_return('<html></html>')
+      allow(client).to receive(:parse_tralbum).and_return(
+        'band_name' => 'Radiohead', 'item_title' => 'In Rainbows',
+        'tralbum_id' => 1, 'tralbum_type' => 'a'
+      )
+      allow(client).to receive(:find_item_in_collection).and_return(nil)
+      expect(client).to receive(:get_collection).once.and_return({})
+
+      cli.send(:resolve_url_items, client, {
+                 urls: %w[
+                   https://radiohead.bandcamp.com/album/in-rainbows
+                   https://radiohead.bandcamp.com/album/ok-computer
+                   https://radiohead.bandcamp.com/album/kid-a
+                 ],
+                 username: 'testuser',
+                 include_hidden: false
+               })
+    end
+
+    it 'refetches when the include_hidden flag differs' do
+      allow(client).to receive(:get_html).and_return('<html></html>')
+      allow(client).to receive(:parse_tralbum).and_return(
+        'band_name' => 'Radiohead', 'item_title' => 'In Rainbows',
+        'tralbum_id' => 1, 'tralbum_type' => 'a'
+      )
+      allow(client).to receive(:find_item_in_collection).and_return(nil)
+      expect(client).to receive(:get_collection).twice.and_return({})
+
+      cli.send(:resolve_url_items, client, {
+                 urls: %w[
+                   https://radiohead.bandcamp.com/album/in-rainbows
+                   https://radiohead.bandcamp.com/album/ok-computer
+                 ],
+                 username: 'testuser',
+                 include_hidden: true
+               })
+      cli.send(:resolve_url_items, client, {
+                 urls: ['https://radiohead.bandcamp.com/album/kid-a'],
+                 username: 'testuser',
+                 include_hidden: false
+               })
+    end
   end
 
   describe '#filter_collection_items' do
