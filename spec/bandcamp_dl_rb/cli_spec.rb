@@ -263,8 +263,9 @@ RSpec.describe BandcampDlRb::CLI do
           'fan_data' => { 'fan_id' => 123 },
           'item_cache' => {
             'collection' => {
-              'a2162872411' => {
-                'sale_item_type' => 'a', 'sale_item_id' => 2_162_872_411,
+              'p403398974' => {
+                'sale_item_type' => 'p', 'sale_item_id' => 403_398_974,
+                'tralbum_id' => 2_162_872_411,
                 'band_name' => 'Radiohead', 'item_title' => 'In Rainbows', 'tralbum_type' => 'a'
               }
             },
@@ -273,7 +274,7 @@ RSpec.describe BandcampDlRb::CLI do
           'collection_data' => {
             'item_count' => 1, 'last_token' => nil,
             'redownload_urls' => {
-              'a2162872411' => 'https://bandcamp.com/download/album?id=2162872411'
+              'p403398974' => 'https://bandcamp.com/download/album?id=2162872411'
             }
           },
           'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
@@ -307,12 +308,12 @@ RSpec.describe BandcampDlRb::CLI do
         expect(@err_string).to include('Downloaded:  1')
         expect(downloaded['band_name']).to eq('Radiohead')
         expect(downloaded['item_title']).to eq('In Rainbows')
-        expect(downloaded['sale_item_id']).to eq(2_162_872_411)
+        expect(downloaded['tralbum_id']).to eq(2_162_872_411)
         expect(downloaded['redownload_url']).to eq('https://bandcamp.com/download/album?id=2162872411')
 
         state_file = File.join(@library, '.bandcamp-sync.json')
         expect(File).to exist(state_file)
-        expect(JSON.parse(File.read(state_file))['item_ids']).to eq(['a2162872411'])
+        expect(JSON.parse(File.read(state_file))['item_ids']).to eq(['p403398974'])
       end
 
       it 'exits with code 1 when the album is not in the collection' do
@@ -577,21 +578,25 @@ RSpec.describe BandcampDlRb::CLI do
       allow(client).to receive(:parse_tralbum).and_return(
         'band_name' => 'Radiohead',
         'item_title' => 'In Rainbows',
-        'sale_item_id' => 2_162_872_411,
-        'sale_item_type' => 'a'
+        'tralbum_id' => 2_162_872_411,
+        'tralbum_type' => 'a'
       )
       allow(client).to receive(:get_collection).and_return(
-        'a2162872411' => {
-          'sale_item_type' => 'a',
-          'sale_item_id' => 2_162_872_411,
+        'p403398974' => {
+          'sale_item_type' => 'p',
+          'sale_item_id' => 403_398_974,
+          'tralbum_id' => 2_162_872_411,
+          'tralbum_type' => 'a',
           'band_name' => 'Radiohead',
           'item_title' => 'In Rainbows',
           'redownload_url' => 'https://bandcamp.com/download/album?id=2162872411'
         }
       )
       allow(client).to receive(:find_item_in_collection).and_return(
-        'sale_item_type' => 'a',
-        'sale_item_id' => 2_162_872_411,
+        'sale_item_type' => 'p',
+        'sale_item_id' => 403_398_974,
+        'tralbum_id' => 2_162_872_411,
+        'tralbum_type' => 'a',
         'band_name' => 'Radiohead',
         'item_title' => 'In Rainbows',
         'redownload_url' => 'https://bandcamp.com/download/album?id=2162872411'
@@ -660,14 +665,16 @@ RSpec.describe BandcampDlRb::CLI do
       end
       allow(client).to receive(:parse_tralbum) do
         { 'band_name' => "Artist #{call_count}", 'item_title' => "Album #{call_count}",
-          'sale_item_id' => call_count, 'sale_item_type' => 'a' }
+          'tralbum_id' => call_count, 'tralbum_type' => 'a' }
       end
       allow(client).to receive(:find_item_in_collection) do |_items, tralbum|
-        { 'sale_item_type' => tralbum['sale_item_type'],
-          'sale_item_id' => tralbum['sale_item_id'],
+        { 'sale_item_type' => 'p',
+          'sale_item_id' => 400_000_000 + tralbum['tralbum_id'],
+          'tralbum_id' => tralbum['tralbum_id'],
+          'tralbum_type' => tralbum['tralbum_type'],
           'band_name' => tralbum['band_name'],
           'item_title' => tralbum['item_title'],
-          'redownload_url' => "https://bandcamp.com/download/#{tralbum['sale_item_id']}" }
+          'redownload_url' => "https://bandcamp.com/download/#{tralbum['tralbum_id']}" }
       end
 
       options = {
