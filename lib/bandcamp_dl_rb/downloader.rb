@@ -167,7 +167,7 @@ module BandcampDlRb
     end
 
     # rubocop:disable Metrics/ParameterLists
-    def self.download_album(client, item, dest_dir, format, force: false, unzip: true)
+    def self.download_album(client, item, dest_dir, format, force: false, unzip: true, encoding: nil)
       # rubocop:enable Metrics/ParameterLists
       album_dir = album_dir_for(item, dest_dir)
       label = album_label(album_dir)
@@ -193,7 +193,7 @@ module BandcampDlRb
       tmp_file = download_to_temp(client, dl, tmp_dir)
       return :failed unless tmp_file
 
-      placed = place_download(tmp_file, album_dir, unzip: unzip)
+      placed = place_download(tmp_file, album_dir, unzip: unzip, encoding: encoding)
       placed ? :downloaded : :failed
     end
 
@@ -296,14 +296,14 @@ module BandcampDlRb
       tmp_file
     end
 
-    def self.place_download(tmp_file, album_dir, unzip: true)
+    def self.place_download(tmp_file, album_dir, unzip: true, encoding: nil)
       unless zip_file?(tmp_file)
         FileUtils.cp(tmp_file, album_dir)
         BandcampDlRb.log "    Saved to #{album_dir}"
         return true
       end
 
-      return true if unzip && extract_zip(tmp_file, album_dir)
+      return true if unzip && extract_zip(tmp_file, album_dir, encoding: encoding)
 
       # extract_zip rescues internally and returns false. Keep the archive
       # instead: the ensure below drops the temp dir either way, so reporting
@@ -329,12 +329,13 @@ module BandcampDlRb
       "#{File.basename(album_dir)}.zip"
     end
 
-    def self.extract_zip(tmp_file, album_dir)
+    def self.extract_zip(tmp_file, album_dir, encoding: nil)
       Zip::File.open(tmp_file) do |zip|
         zip.each do |entry|
-          next unless extractable_entry?(entry)
+          basename = entry_basename(entry.name, encoding)
+          next if basename.nil?
+          next unless extractable_entry?(basename)
 
-          basename = File.basename(entry.name)
           next if existing_cover?(basename, album_dir)
 
           entry.extract(basename, destination_directory: album_dir)
@@ -347,10 +348,64 @@ module BandcampDlRb
       false
     end
 
-    def self.extractable_entry?(entry)
-      return false if entry.name.start_with?('__MACOSX', '.')
+    # Decodes a zip entry name to UTF-8 and returns just its basename, or nil
+    # if nothing usable is left.
+    #
+    # rubyzip hands back raw ASCII-8BIT bytes whenever the archive's UTF-8
+    # general-purpose flag (bit 11) is unset. Joining those against a UTF-8
+    # album directory that contains a multibyte artist name raises
+    # Encoding::CompatibilityError, and writing them raises Errno::EILSEQ, so
+    # the name has to be decoded before it is used for anything.
+    def self.entry_basename(name, encoding = nil)
+      decoded = decode_entry_name(name, encoding)
+      return nil if decoded.nil?
 
-      basename = File.basename(entry.name)
+      base = File.basename(decoded)
+      # Separators and reserved characters are invalid or unsafe in a filename
+      # on the platforms this runs on.
+      base = base.gsub(%r{[/\\:*?"<>|\x00-\x1f]}, '_').strip
+      # "." and ".." name directories, not files.
+      return nil if base.empty? || base == '.' || base == '..'
+
+      base
+    end
+
+    # Per the zip specification a name with the UTF-8 flag unset is CP437, but
+    # archives written by Japanese Windows tooling are usually CP932
+    # (Shift-JIS), which no real packer marks correctly. Try the source
+    # encodings in that order and let +encoding+ override for the odd packer
+    # whose bytes happen to be valid in a later candidate.
+    ENTRY_ENCODINGS = %w[CP932 CP437].freeze
+
+    def self.decode_entry_name(name, encoding = nil)
+      utf8 = name.to_s.dup.force_encoding(Encoding::UTF_8)
+      return utf8 if utf8.valid_encoding?
+
+      candidates = encoding ? [encoding] : ENTRY_ENCODINGS
+      candidates.each do |enc|
+        converted = convert_entry_name(utf8, enc)
+        return converted if converted
+      end
+
+      # Last resort: drop the bytes that will not decode, so the extension
+      # survives and the entry is still recognised as audio.
+      utf8.scrub('')
+    end
+
+    def self.convert_entry_name(utf8, enc)
+      converted = utf8.dup.force_encoding(enc).encode(Encoding::UTF_8)
+      # Converting to the encoding a string already carries is a silent no-op
+      # that does not raise, so the result must be validated rather than
+      # assumed good.
+      converted.valid_encoding? ? converted : nil
+    rescue ArgumentError, Encoding::UndefinedConversionError,
+           Encoding::InvalidByteSequenceError
+      nil
+    end
+
+    def self.extractable_entry?(basename)
+      return false if basename.start_with?('__MACOSX', '.')
+
       basename.match?(AUDIO_EXTENSIONS) || basename.match?(COVER_EXTENSIONS)
     end
 

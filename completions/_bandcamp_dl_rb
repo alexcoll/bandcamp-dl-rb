@@ -18,6 +18,7 @@ _bandcamp_dl_rb() {
     '--url[Download a specific album/track by URL]:url' \
     {-j,--jobs}'[Download N albums in parallel (1-16)]:jobs' \
     '--page-size[Request N collection items per page (1-500)]:page size' \
+    '--entry-encoding[Source encoding for non-UTF-8 zip entry names]:encoding' \
     '--items[Download specific items by ID]:ids' \
     '--filter[Download only items matching REGEX]:regex' \
     {-v,--verbose}'[Verbose output]' \

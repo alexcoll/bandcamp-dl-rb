@@ -44,6 +44,7 @@ module BandcampDlRb
         until_date: nil,
         force: false,
         unzip: true,
+        entry_encoding: nil,
         dry_run: false,
         username: nil,
         urls: [],
@@ -298,6 +299,10 @@ module BandcampDlRb
         end
         opts.on('--force', 'Re-download even if album already exists') { options[:force] = true }
         opts.on('--no-unzip', 'Save album downloads as ZIPs without extracting track files') { options[:unzip] = false }
+        opts.on('--entry-encoding ENC',
+                'Source encoding for non-UTF-8 zip entry names (default: auto-detect)') do |v|
+          options[:entry_encoding] = v
+        end
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
         opts.on('--url URL', 'Download a specific album/track by Bandcamp URL (repeatable)') { |v| options[:urls] << v }
         opts.on('-j', '--jobs N', Integer,
@@ -381,7 +386,8 @@ module BandcampDlRb
     def download_items_serial(client, items, options)
       items.each_value do |item|
         result = Downloader.download_album(
-          client, item, options[:library], options[:format], force: options[:force], unzip: options[:unzip]
+          client, item, options[:library], options[:format],
+          force: options[:force], unzip: options[:unzip], encoding: options[:entry_encoding]
         )
         @stats[result] += 1
       end
@@ -401,7 +407,8 @@ module BandcampDlRb
         loop do
           item = queue.pop(true)
           result = Downloader.download_album(
-            client, item, options[:library], options[:format], force: options[:force], unzip: options[:unzip]
+            client, item, options[:library], options[:format],
+            force: options[:force], unzip: options[:unzip], encoding: options[:entry_encoding]
           )
           stats_mutex.synchronize { @stats[result] += 1 }
         rescue ThreadError

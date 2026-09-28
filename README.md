@@ -235,6 +235,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--page-size N`              | Collection items per page request (1-500, default: `100`)        |
 | `--force`                    | Re-download even if the album already exists                     |
 | `--no-unzip`                 | Save album downloads as ZIPs without extracting track files      |
+| `--entry-encoding ENC`       | Source encoding for non-UTF-8 zip entry names (default: CP932, then CP437) |
 | `--dry-run`                  | List what would be downloaded without downloading                |
 | `-V, --version`              | Show the version and exit                                        |
 | `-v, --verbose`              | Verbose output                                                   |
