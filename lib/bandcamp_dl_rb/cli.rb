@@ -233,11 +233,17 @@ module BandcampDlRb
       end
 
       BandcampDlRb.log '  Searching collection for this item...'
-      collection = client.get_collection(username, include_hidden: options[:include_hidden])
-      item = client.find_item_in_collection(collection, tralbum)
-      return item if item
+      client.find_item_in_collection(cached_collection(client, username, options), tralbum)
+    end
 
-      nil
+    # Every --url in a run resolves against the same collection, and walking it
+    # costs several requests, so fetch it once per account rather than once per
+    # URL. Keyed on username and include_hidden so a single run that mixes
+    # neither still shares one fetch.
+    def cached_collection(client, username, options)
+      key = [username, options[:include_hidden]]
+      @collection_cache ||= {}
+      @collection_cache[key] ||= client.get_collection(username, include_hidden: options[:include_hidden])
     end
 
     def item_key(item)
