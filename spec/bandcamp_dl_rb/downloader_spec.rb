@@ -280,6 +280,43 @@ RSpec.describe BandcampDlRb::Downloader do
       expect(leftover_temp_dirs).to eq(before)
     end
 
+    it 'keeps the zip and reports :downloaded when extraction fails' do
+      pagedata = {
+        'download_items' => [
+          { 'downloads' => { 'flac' => { 'url' => 'https://bcbits/kida.zip', 'size_mb' => '10MB' } } }
+        ]
+      }
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(described_class).to receive(:download_file) do |_c, _url, dest|
+        File.write(dest, "PK\x03\x04fakezip")
+        true
+      end
+      allow(described_class).to receive(:extract_zip).and_return(false)
+
+      album_dir = File.join(@dest, 'Radiohead', 'Kid A')
+      expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:downloaded)
+      expect(File.exist?(File.join(album_dir, 'Kid A.zip'))).to be true
+    end
+
+    it 'does not retry an album whose extraction failed, because the zip was kept' do
+      pagedata = {
+        'download_items' => [
+          { 'downloads' => { 'flac' => { 'url' => 'https://bcbits/kida.zip', 'size_mb' => '10MB' } } }
+        ]
+      }
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(described_class).to receive(:download_file) do |_c, _url, dest|
+        File.write(dest, "PK\x03\x04fakezip")
+        true
+      end
+      allow(described_class).to receive(:extract_zip).and_return(false)
+
+      expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:downloaded)
+      # Second run must skip rather than re-download and re-fail forever.
+      expect(described_class.download_album(client, item, @dest, 'flac')).to eq(:skipped)
+      expect(described_class).to have_received(:download_file).once
+    end
+
     it 'saves cover.jpg from CDN when art_id is present' do
       pagedata = {
         'download_items' => [
@@ -587,6 +624,51 @@ RSpec.describe BandcampDlRb::Downloader do
       expect(described_class.place_download(file, album_dir, unzip: false)).to be true
       expect(File.exist?(File.join(album_dir, 'Kid A.zip'))).to be true
       expect(File).not_to exist(File.join(album_dir, '01 Track.flac'))
+    end
+
+    it 'keeps the zip when extraction fails instead of discarding it' do
+      album_dir = File.join(@dest, 'Kid A')
+      FileUtils.mkdir_p(album_dir)
+      file = tmp_file('download.zip')
+      Zip::File.open(file, create: true) do |zip|
+        zip.get_output_stream('01 Track.flac') { |f| f.write('audio') }
+      end
+      allow(described_class).to receive(:extract_zip).and_return(false)
+
+      expect(described_class.place_download(file, album_dir)).to be true
+      expect(File.exist?(File.join(album_dir, 'Kid A.zip'))).to be true
+      expect(File).not_to exist(File.join(album_dir, '01 Track.flac'))
+    end
+
+    it 'still cleans up the temp dir when extraction fails' do
+      album_dir = File.join(@dest, 'Kid A')
+      FileUtils.mkdir_p(album_dir)
+      file = tmp_file('download.zip')
+      Zip::File.open(file, create: true) do |zip|
+        zip.get_output_stream('01 Track.flac') { |f| f.write('audio') }
+      end
+      allow(described_class).to receive(:extract_zip).and_return(false)
+
+      described_class.place_download(file, album_dir)
+      expect(File).not_to exist(File.dirname(file))
+    end
+
+    it 'keeps the zip alongside tracks that did extract' do
+      album_dir = File.join(@dest, 'Kid A')
+      FileUtils.mkdir_p(album_dir)
+      file = tmp_file('download.zip')
+      Zip::File.open(file, create: true) do |zip|
+        zip.get_output_stream('01 Track.flac') { |f| f.write('audio') }
+      end
+      # Extraction extracts one entry, then blows up on a later one.
+      allow(described_class).to receive(:extract_zip) do
+        File.write(File.join(album_dir, '01 Track.flac'), 'audio')
+        false
+      end
+
+      expect(described_class.place_download(file, album_dir)).to be true
+      expect(File.exist?(File.join(album_dir, 'Kid A.zip'))).to be true
+      expect(File.exist?(File.join(album_dir, '01 Track.flac'))).to be true
     end
   end
 
