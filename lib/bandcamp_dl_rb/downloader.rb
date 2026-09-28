@@ -297,13 +297,19 @@ module BandcampDlRb
     end
 
     def self.place_download(tmp_file, album_dir, unzip: true)
-      if zip_file?(tmp_file)
-        unzip ? extract_zip(tmp_file, album_dir) : keep_zip(tmp_file, album_dir)
-      else
+      unless zip_file?(tmp_file)
         FileUtils.cp(tmp_file, album_dir)
         BandcampDlRb.log "    Saved to #{album_dir}"
-        true
+        return true
       end
+
+      return true if unzip && extract_zip(tmp_file, album_dir)
+
+      # extract_zip rescues internally and returns false. Keep the archive
+      # instead: the ensure below drops the temp dir either way, so reporting
+      # failure here would throw away the only copy of the download and leave
+      # the album permanently un-downloadable.
+      keep_zip(tmp_file, album_dir)
     ensure
       FileUtils.rm_rf(File.dirname(tmp_file))
     end
