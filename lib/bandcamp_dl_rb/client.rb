@@ -5,11 +5,13 @@ module BandcampDlRb
   # API using the user's `identity` session cookie.
   class Client
     USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+    MAX_PAGES = 500
 
     attr_reader :identity
 
-    def initialize(identity)
+    def initialize(identity, page_size: BandcampDlRb::DEFAULT_PAGE_SIZE)
       @identity = identity
+      @page_size = page_size
       @cookie = "identity=#{identity}"
     end
 
@@ -175,35 +177,52 @@ module BandcampDlRb
     end
 
     def fetch_paged(items, pagedata, scope, fan_id, fetcher)
-      remaining, last_token = pagination_state(pagedata, scope)
-      return items if remaining.nil?
+      last_token = start_token(pagedata, scope)
+      return items unless last_token
 
-      fetch_remaining(items, remaining, last_token, fan_id, fetcher)
+      fetch_pages(items, last_token, fan_id, fetcher)
     end
 
-    def fetch_remaining(items, remaining, last_token, fan_id, fetcher)
-      log "  Fetching #{remaining} more #{fetcher_label(fetcher)} items..." if remaining.positive?
-      while remaining.positive? && last_token
-        resp = send(fetcher, fan_id, last_token, [remaining, 100].min)
+    # Walks the collection until the API reports no more pages. Bandcamp's
+    # `count` is a page size, not a budget: consecutive pages overlap heavily
+    # (a 100-item page advances the cursor by only ~20 new items), so the item
+    # count advertised on the profile page cannot be used to decide when to
+    # stop. `more_available` is the only reliable end-of-collection signal.
+    def fetch_pages(items, last_token, fan_id, fetcher)
+      pages = 0
+      while last_token && pages < MAX_PAGES
+        resp = send(fetcher, fan_id, last_token, @page_size)
         break unless resp
 
         incorporate_paged_response(items, resp)
+        pages += 1
+        break if last_page?(resp, last_token)
+
         last_token = resp['last_token']
-        remaining -= resp['items']&.length || 0
       end
+      BandcampDlRb.log_verbose "  Fetched #{pages} page(s) of #{fetcher_label(fetcher)} items"
       items
+    end
+
+    # A response ends paging when the server says so, when it hands back no
+    # token, or when the token fails to advance. The token can also stall on
+    # an empty page, which would otherwise loop forever.
+    def last_page?(resp, previous_token)
+      return true unless resp['more_available']
+
+      resp['items'].nil? || resp['items'].empty? || resp['last_token'].nil? || resp['last_token'] == previous_token
     end
 
     def fetcher_label(fetcher)
       fetcher == :fetch_hidden_items ? 'hidden' : 'collection'
     end
 
-    def pagination_state(pagedata, scope)
-      cache = pagedata['item_cache'][scope.to_s]
-      return [nil, nil] if cache.nil?
+    # The starting cursor for a scope, or nil when the profile page's embedded
+    # cache already covers the whole scope and there is nothing left to page.
+    def start_token(pagedata, scope)
+      return nil if pagedata['item_cache'][scope.to_s].nil?
 
-      data = pagedata[pagedata_key(scope)]
-      [data['item_count'] - cache.length, data['last_token']]
+      pagedata.dig(pagedata_key(scope), 'last_token')
     end
 
     def incorporate_paged_response(items, resp)

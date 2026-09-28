@@ -26,7 +26,7 @@ module BandcampDlRb
       identity = authenticate(options)
       return 1 unless identity
 
-      client = Client.new(identity)
+      client = Client.new(identity, page_size: options[:page_size])
       items = acquire_items(client, options)
       return 1 unless items
 
@@ -49,6 +49,7 @@ module BandcampDlRb
         urls: [],
         items: nil,
         jobs: 1,
+        page_size: BandcampDlRb::DEFAULT_PAGE_SIZE,
         filter: nil
       }
 
@@ -62,7 +63,7 @@ module BandcampDlRb
     private
 
     def valid_options?(options)
-      valid_jobs?(options) && valid_mode?(options)
+      valid_jobs?(options) && valid_page_size?(options) && valid_mode?(options)
     end
 
     def valid_mode?(options)
@@ -85,6 +86,16 @@ module BandcampDlRb
       return true if (1..MAX_JOBS).cover?(jobs)
 
       @err.puts "ERROR: --jobs must be between 1 and #{MAX_JOBS}."
+      @err.puts(options[:parser])
+      false
+    end
+
+    def valid_page_size?(options)
+      page_size = options[:page_size]
+      return true unless page_size
+      return true if (1..BandcampDlRb::MAX_PAGE_SIZE).cover?(page_size)
+
+      @err.puts "ERROR: --page-size must be between 1 and #{BandcampDlRb::MAX_PAGE_SIZE}."
       @err.puts(options[:parser])
       false
     end
@@ -286,6 +297,11 @@ module BandcampDlRb
         opts.on('-j', '--jobs N', Integer,
                 "Download up to N albums in parallel (1-#{MAX_JOBS}, default: 1)") do |v|
           options[:jobs] = v
+        end
+        opts.on('--page-size N', Integer,
+                "Collection page size to request (1-#{BandcampDlRb::MAX_PAGE_SIZE}, " \
+                "default: #{BandcampDlRb::DEFAULT_PAGE_SIZE})") do |v|
+          options[:page_size] = v
         end
         opts.on('--items IDS', 'Download specific items by ID, e.g. a100,t200 (requires username)') do |v|
           options[:items] = v

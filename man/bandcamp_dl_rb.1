@@ -136,6 +136,18 @@ Keep
 .I N
 small; Bandcamp throttles session endpoints.
 .TP
+.B \-\-page-size " " \fIN\fR
+Request
+.I N
+collection items per page while walking the collection
+(1-500, default:
+.BR 100 ).
+Bandcamp's collection pages overlap, so a larger page size usually finishes the
+walk in fewer requests; the API's own
+.I more_available
+flag decides when the collection is exhausted, so this never truncates the
+result.
+.TP
 .B \-\-force
 Re-download even if the album already exists, and refresh the
 .B album.json
