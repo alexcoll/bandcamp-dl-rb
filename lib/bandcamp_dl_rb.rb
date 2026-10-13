@@ -11,7 +11,6 @@ require 'sqlite3'
 require 'cgi'
 require 'date'
 require 'time'
-require 'openssl'
 
 require 'bandcamp_dl_rb/version'
 require 'bandcamp_dl_rb/utils'

@@ -2,7 +2,7 @@ complete -c bandcamp_dl_rb -s l -l library -d 'Plex library root path' -r -F
 complete -c bandcamp_dl_rb -s f -l format -d 'Audio format' -x \
   -a 'flac wav aiff-lossless mp3-320 mp3-v0 aac-hi alac vorbis'
 complete -c bandcamp_dl_rb -s b -l browser -d 'Browser to extract cookies from' -x \
-  -a 'firefox chrome chromium safari auto'
+  -a 'firefox safari auto'
 complete -c bandcamp_dl_rb -s c -l cookie-file -d 'Path to cookies.txt file or identity cookie value' -r -F
 complete -c bandcamp_dl_rb -s H -l include-hidden -d 'Also download hidden items'
 complete -c bandcamp_dl_rb -l since -d 'Only download items purchased on/after DATE' -r

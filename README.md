@@ -6,19 +6,19 @@ Download all your [Bandcamp](https://bandcamp.com/) purchases (FLAC or the
 highest available quality) and organize them into a clean `Artist/Album`
 library.
 
-- **Firefox, Safari, or Chrome** cookie auth (Safari: macOS only)
+- **Firefox or Safari** cookie auth (Safari: macOS only)
 - FLAC by default, with automatic fallback through a quality ladder
 - Outputs to a clean `Artist/Album/track` layout
 - Sync your whole collection, or download specific albums via **URL** or by **item ID**
 - Fast re-runs via a small local state file
-- Cross-platform: macOS, Linux
+- Cross-platform: macOS and Linux (Windows is not supported)
 
 ---
 
 ## What it does
 
-1. Reads your Bandcamp **`identity` session cookie** from your local Firefox,
-   Safari, or Chrome profile (the same cookie your logged-in browser uses).
+1. Reads your Bandcamp **`identity` session cookie** from your local Firefox
+   or Safari profile (the same cookie your logged-in browser uses).
 2. Scans your Bandcamp **collection** for all purchased items.
 3. Downloads each as FLAC (or the best format available).
 4. Organizes everything into a clean layout:
@@ -89,7 +89,7 @@ bundle exec ruby exe/bandcamp_dl_rb --help
 | Gem        | Used for                                       |
 |------------|------------------------------------------------|
 | `rubyzip`  | Extracting album zip archives                  |
-| `sqlite3`  | Reading the Firefox / Chrome cookie databases  |
+| `sqlite3`  | Reading the Firefox cookie database            |
 | `rspec`    | Only needed to run the tests                   |
 
 > **Homebrew install:** the `alexcoll/tap` formula installs the gem (and its
@@ -115,12 +115,12 @@ You'll pass `yourname` as the final argument.
 ## Quick start
 
 ```bash
-# With a Firefox, Safari, or Chrome profile already logged into bandcamp.com
+# With a Firefox or Safari profile already logged into bandcamp.com
 bandcamp_dl_rb --library ~/Music/Bandcamp yourname
 ```
 
-That's it — the script finds your `identity` cookie in Firefox (then Safari,
-then Chrome), downloads your collection as FLAC, and files it under
+That's it — the script finds your `identity` cookie in Firefox (then Safari),
+downloads your collection as FLAC, and files it under
 `~/Music/Bandcamp/<Artist>/<Album>/`.
 
 ---
@@ -132,32 +132,18 @@ public download endpoint. This tool uses the same **undocumented
 `/api/fancollection/*` endpoints** the website does, authenticated with your
 session `identity` cookie.
 
-### Automatic (Firefox, Safari, or Chrome)
+### Automatic (Firefox or Safari)
 
-By default the script tries Firefox first, then Safari, then Chrome, and
-detects the relevant profile directory on every OS.
+By default the script tries Firefox first, then Safari, and detects the
+relevant profile directory on every OS.
 
 **Firefox** profile directories:
 
 | OS      | Profile directory                                   |
 |---------|-----------------------------------------------------|
 | macOS   | `~/Library/Application Support/Firefox/Profiles/`   |
-| Windows | `%APPDATA%\Mozilla\Firefox\Profiles\`               |
 | Linux   | `~/.mozilla/firefox/`                               |
 
-**Chrome / Chromium** cookie database locations:
-
-| OS      | Chrome cookie database                                                    | Chromium cookie database                                                    |
-|---------|--------------------------------------------------------------------------|-----------------------------------------------------------------------------|
-| macOS   | `~/Library/Application Support/Google/Chrome/Default/Network/Cookies`     | `~/Library/Application Support/Chromium/Default/Network/Cookies`            |
-| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data\Default\Network\Cookies`         | `%LOCALAPPDATA%\Chromium\User Data\Default\Network\Cookies`                 |
-| Linux   | `~/.config/google-chrome/Default/Network/Cookies`                        | `~/.config/chromium/Default/Network/Cookies`                                |
-
-> **Chrome notes:** Chrome encrypts its cookies with a key in your OS keychain
-> (Keychain on macOS, DPAPI on Windows, a keyring on Linux). The script reads
-> that key automatically when possible. If it cannot (e.g. an unsupported
-> login keychain), use `--cookie-file` as a fallback.
->
 > **Safari (macOS only):** Safari stores cookies in a macOS-specific binary
 > file. The script reads it in plaintext (no decryption needed) from the
 > sandboxed container at
@@ -173,8 +159,7 @@ detects the relevant profile directory on every OS.
 > across all Firefox profiles — if you have several, each is checked until one
 > yields the `identity` cookie.
 
-Use `--browser firefox`, `--browser safari`, `--browser chrome`, or
-`--browser chromium` to force one specifically.
+Use `--browser firefox` or `--browser safari` to force one specifically.
 
 ### Manual (fallback)
 
@@ -218,7 +203,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 |------------------------------|------------------------------------------------------------------|
 | `-l, --library PATH`         | **(required)** library root path                            |
 | `-f, --format FORMAT`        | Download format (default: `flac`)                                |
-| `-b, --browser NAME`         | `firefox`, `safari`, `chrome`, `chromium`, or `auto` (default: `auto`, tries Firefox then Safari then Chrome [Safari is macOS-only]) |
+| `-b, --browser NAME`         | `firefox`, `safari`, or `auto` (default: `auto`, tries Firefox then Safari [Safari is macOS-only]) |
 | `-c, --cookie-file PATH`     | Path to `cookies.txt`, or a raw `identity` cookie value          |
 | `-H, --include-hidden`       | Also download items hidden in your collection                    |
 | `--since DATE`               | Only items purchased on/after `YYYY-MM-DD`                       |
@@ -335,9 +320,6 @@ and refreshes the sidecar.
 ```bash
 # Essentials: all purchases as FLAC
 bandcamp_dl_rb --library ~/Music/Bandcamp yourname
-
-# Windows: library on another drive
-bandcamp_dl_rb -l "D:/Music/Bandcamp" yourname
 
 # Only purchases since a date, as WAV
 bandcamp_dl_rb -l ~/Music/Bandcamp --since 2025-01-01 -f wav yourname

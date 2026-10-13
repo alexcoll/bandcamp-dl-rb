@@ -5,7 +5,7 @@ module BandcampDlRb
     # Reads the Bandcamp `identity` cookie from the Safari binary cookies file.
     #
     # macOS stores Safari cookies in a custom binary format (Cookies.binarycookies)
-    # whose values are stored in plaintext (unlike Chrome's AES-encrypted DB).
+    # whose values are stored in plaintext, so no decryption is needed.
     class Safari
       COOKIES_FILE = 'Cookies.binarycookies'
       MAGIC = 'cook'

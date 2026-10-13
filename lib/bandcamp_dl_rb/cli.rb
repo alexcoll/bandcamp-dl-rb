@@ -275,7 +275,7 @@ module BandcampDlRb
         opts.separator 'Provide a username to sync your collection, or --url/--items for specific items.'
         opts.separator ''
         opts.separator 'Authentication:'
-        opts.separator '  The script reads your identity cookie from Firefox, Safari, or Chrome automatically (macOS).'
+        opts.separator '  The script reads your identity cookie from Firefox or Safari automatically (macOS).'
         opts.separator '  If that fails, export your cookies from your browser and use --cookie-file.'
         opts.separator '  Or provide the raw identity cookie value with --cookie-file.'
         opts.separator ''
@@ -286,7 +286,7 @@ module BandcampDlRb
         opts.separator 'Options:'
         opts.on('-l', '--library PATH', 'Plex library root path (required)') { |v| options[:library] = v }
         opts.on('-f', '--format FORMAT', BandcampDlRb::FORMAT_MAP.keys, 'Audio format (default: flac)') { |v| options[:format] = v }
-        opts.on('-b', '--browser BROWSER', %w[firefox chrome chromium safari auto],
+        opts.on('-b', '--browser BROWSER', %w[firefox safari auto],
                 'Browser to extract cookies from (default: auto)') { |v| options[:browser] = v }
         opts.on('-c', '--cookie-file PATH', 'Path to cookies.txt file, or raw identity cookie value') do |v|
           options[:cookie_file] = v
@@ -342,7 +342,7 @@ module BandcampDlRb
     def print_cookie_error
       @err.puts "\nERROR: Could not find Bandcamp identity cookie."
       @err.puts "\nTo fix this, try one of:"
-      @err.puts '  1. Log in to bandcamp.com in Firefox, Safari, or Chrome and run this script again.'
+      @err.puts '  1. Log in to bandcamp.com in Firefox or Safari and run this script again.'
       @err.puts "  2. Use a browser extension (e.g., 'Get cookies.txt LOCALLY') to export cookies,"
       @err.puts '     then pass the file with: --cookie-file /path/to/cookies.txt'
       @err.puts "  3. Open DevTools (F12) > Application > Cookies > bandcamp.com, find 'identity',"

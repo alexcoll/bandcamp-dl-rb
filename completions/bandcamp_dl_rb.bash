@@ -6,7 +6,7 @@ _bandcamp_dl_rb() {
 --since --until --force --dry-run --url --jobs --page-size --entry-encoding --items --filter \
 --verbose --help --version"
   local formats="flac wav aiff-lossless mp3-320 mp3-v0 aac-hi alac vorbis"
-  local browsers="firefox chrome chromium safari auto"
+  local browsers="firefox safari auto"
 
   case "$prev" in
     --format|-f) COMPREPLY=( $(compgen -W "$formats" -- "$cur") ); return ;;
