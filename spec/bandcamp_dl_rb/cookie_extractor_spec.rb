@@ -114,13 +114,6 @@ RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
         .to eq('/Users/test/Library/Application Support/Firefox/Profiles')
     end
 
-    it 'uses APPDATA on Windows' do
-      stub_const('RUBY_PLATFORM', 'x64-mingw32')
-      allow(ENV).to receive(:[]).with('APPDATA').and_return('C:/Users/Test/AppData/Roaming')
-      expect(described_class.profile_dir)
-        .to eq('C:/Users/Test/AppData/Roaming/Mozilla/Firefox/Profiles')
-    end
-
     it 'uses ~/.mozilla/firefox on Linux and other platforms' do
       stub_const('RUBY_PLATFORM', 'x86_64-linux')
       allow(Dir).to receive(:home).and_return('/home/test')

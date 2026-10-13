@@ -15,8 +15,6 @@ module BandcampDlRb
         case RUBY_PLATFORM
         when /darwin/
           File.join(Dir.home, 'Library/Application Support/Firefox/Profiles')
-        when /mswin|mingw|cygwin/
-          File.join(ENV['APPDATA'].to_s, 'Mozilla', 'Firefox', 'Profiles')
         else
           File.join(Dir.home, '.mozilla/firefox')
         end

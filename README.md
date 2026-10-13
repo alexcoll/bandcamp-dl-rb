@@ -11,7 +11,7 @@ library.
 - Outputs to a clean `Artist/Album/track` layout
 - Sync your whole collection, or download specific albums via **URL** or by **item ID**
 - Fast re-runs via a small local state file
-- Cross-platform: macOS, Linux
+- Cross-platform: macOS and Linux (Windows is not supported)
 
 ---
 
@@ -142,7 +142,6 @@ relevant profile directory on every OS.
 | OS      | Profile directory                                   |
 |---------|-----------------------------------------------------|
 | macOS   | `~/Library/Application Support/Firefox/Profiles/`   |
-| Windows | `%APPDATA%\Mozilla\Firefox\Profiles\`               |
 | Linux   | `~/.mozilla/firefox/`                               |
 
 > **Safari (macOS only):** Safari stores cookies in a macOS-specific binary
@@ -321,9 +320,6 @@ and refreshes the sidecar.
 ```bash
 # Essentials: all purchases as FLAC
 bandcamp_dl_rb --library ~/Music/Bandcamp yourname
-
-# Windows: library on another drive
-bandcamp_dl_rb -l "D:/Music/Bandcamp" yourname
 
 # Only purchases since a date, as WAV
 bandcamp_dl_rb -l ~/Music/Bandcamp --since 2025-01-01 -f wav yourname
