@@ -3,9 +3,9 @@
 require_relative '../spec_helper'
 
 # The shell completions are hand-maintained lists of options, so they drift
-# whenever the CLI gains one. --no-unzip survived missing for a long time
-# because nothing diffed the completions against the parser; these examples are
-# that guard.
+# whenever the CLI gains one. --no-unzip and --temp-dir were both missing for a
+# long time because nothing diffed the completions against the parser; these
+# examples are that guard.
 RSpec.describe 'completions' do
   let(:bash_source) { File.read(File.expand_path('../../completions/bandcamp_dl_rb.bash', __dir__)) }
   let(:zsh_source) { File.read(File.expand_path('../../completions/_bandcamp_dl_rb', __dir__)) }
