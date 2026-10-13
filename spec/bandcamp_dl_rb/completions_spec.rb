@@ -59,18 +59,18 @@ RSpec.describe 'completions' do
   describe 'completions/bandcamp_dl_rb.bash' do
     let(:completion_options) { bash_options }
 
-    include_examples 'a completion in sync with the CLI'
+    it_behaves_like 'a completion in sync with the CLI'
   end
 
   describe 'completions/_bandcamp_dl_rb' do
     let(:completion_options) { zsh_options }
 
-    include_examples 'a completion in sync with the CLI'
+    it_behaves_like 'a completion in sync with the CLI'
   end
 
   describe 'completions/bandcamp_dl_rb.fish' do
     let(:completion_options) { fish_options }
 
-    include_examples 'a completion in sync with the CLI'
+    it_behaves_like 'a completion in sync with the CLI'
   end
 end
