@@ -157,7 +157,7 @@ RSpec.describe BandcampDlRb::CLI do
       it { is_expected.to include(state_file: false) }
     end
 
-    context 'without a state file flag' do
+    context 'with neither flag' do
       let(:args) { ['--library', '/x', 'u'] }
 
       # nil is the "use the default under the library root" sentinel, which is
@@ -525,43 +525,42 @@ RSpec.describe BandcampDlRb::CLI do
       context 'with --state-file' do
         let(:custom) { File.join(dest, 'state', 'custom.json') }
 
-        it 'writes the state file to the given path' do
+        before do
           recording_downloader
           run_cli(['--library', dest, '--state-file', custom, 'testuser'])
+        end
+
+        it 'writes the state file to the given path' do
           expect(File.exist?(custom)).to be(true)
         end
 
+        # The library root is the only directory #run creates, so an explicit
+        # path elsewhere would raise ENOENT without this.
         it 'creates a missing parent directory' do
-          recording_downloader
-          run_cli(['--library', dest, '--state-file', custom, 'testuser'])
           expect(File.directory?(File.dirname(custom))).to be(true)
         end
 
         it 'records the synced item ids there' do
-          recording_downloader
-          run_cli(['--library', dest, '--state-file', custom, 'testuser'])
-          state = JSON.parse(File.read(custom))
-          expect(state['item_ids']).to contain_exactly('a100', 'a200', 't300')
+          expect(JSON.parse(File.read(custom))['item_ids']).to contain_exactly('a100', 'a200', 't300')
         end
 
         it 'leaves the default location alone' do
-          recording_downloader
-          run_cli(['--library', dest, '--state-file', custom, 'testuser'])
           expect(File.exist?(File.join(dest, '.bandcamp-sync.json'))).to be(false)
         end
       end
 
       context 'with --no-state-file' do
+        # No recording_downloader here: the outer before already records into
+        # +downloaded+, and re-stubbing would shadow that Queue.
+        before { run_cli(['--library', dest, '--no-state-file', 'testuser']) }
+
         it 'writes no state file in the library' do
-          recording_downloader
-          run_cli(['--library', dest, '--no-state-file', 'testuser'])
           expect(File.exist?(File.join(dest, '.bandcamp-sync.json'))).to be(false)
         end
 
+        # The flag suppresses bookkeeping, not the downloads themselves.
         it 'still downloads everything' do
-          downloaded = recording_downloader
-          run_cli(['--library', dest, '--no-state-file', 'testuser'])
-          expect(downloaded.length).to eq(3)
+          expect(downloaded.size).to eq(3)
         end
       end
 
