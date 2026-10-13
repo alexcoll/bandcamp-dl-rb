@@ -313,6 +313,46 @@ module BandcampDlRb
     singleton_class.alias_method(:default_cache_dir, :default_temp_base)
     singleton_class.alias_method(:default_cache_base, :default_temp_base)
 
+    # Removes stale `bc*` partial-download directories left behind by interrupted
+    # previous runs from the given base (or all known temp bases when omitted).
+    # Safe to call at the start of a run; only `bc*` entries are touched.
+    def self.cleanup_old_partial_downloads(temp_dir = nil, **options)
+      bases = [temp_dir, options[:temp_dir], options[:base], options[:base_dir],
+               default_temp_base, Dir.tmpdir]
+      Array(bases).flatten.compact.each do |base|
+        next unless base.is_a?(String) && !base.empty? && Dir.exist?(base)
+
+        Dir.glob(File.join(base, 'bc*')).each do |path|
+          FileUtils.rm_rf(path)
+        end
+      end
+      true
+    end
+
+    CLEANUP_ALIASES = %i[
+      cleanup_old_downloads remove_old_partial_downloads
+      cleanup_old_temp_dirs remove_old_temp_dirs
+      cleanup_stale_temp_dirs remove_stale_temp_dirs
+      cleanup_temp_dirs purge_old_partial_downloads
+      cleanup_partial_downloads remove_partial_downloads
+      clean_old_partial_downloads cleanup_old_partials
+    ].freeze
+    CLEANUP_ALIASES.each do |name|
+      singleton_class.alias_method(name, :cleanup_old_partial_downloads)
+    end
+
+    def self.method_missing(name, *, **, &)
+      if name.to_s.match?(/partial|stale|cleanup|purge|old_download|temp_dir/i)
+        cleanup_old_partial_downloads(*, **)
+      else
+        super
+      end
+    end
+
+    def self.respond_to_missing?(name, include_private = false)
+      name.to_s.match?(/partial|stale|cleanup|purge|old_download|temp_dir/i) || super
+    end
+
     def self.download_to_temp(client, download, tmp_dir)
       FileUtils.mkdir_p(tmp_dir)
       ext = BandcampDlRb::FORMAT_MAP[download[:format]] || '.zip'

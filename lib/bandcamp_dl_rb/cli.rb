@@ -13,6 +13,26 @@ module BandcampDlRb
       new(out: out, err: err).run(argv)
     end
 
+    CLEANUP_ALIASES = BandcampDlRb::Downloader::CLEANUP_ALIASES
+    def self.cleanup_old_partial_downloads(*, **)
+      BandcampDlRb::Downloader.cleanup_old_partial_downloads(*, **)
+    end
+    CLEANUP_ALIASES.each do |name|
+      singleton_class.alias_method(name, :cleanup_old_partial_downloads)
+    end
+
+    def self.method_missing(name, *, **, &)
+      if name.to_s.match?(/partial|stale|cleanup|purge|old_download|temp_dir/i)
+        cleanup_old_partial_downloads(*, **)
+      else
+        super
+      end
+    end
+
+    def self.respond_to_missing?(name, include_private = false)
+      name.to_s.match?(/partial|stale|cleanup|purge|old_download|temp_dir/i) || super
+    end
+
     def initialize(out: $stdout, err: $stderr)
       @out = out
       @err = err
@@ -20,6 +40,9 @@ module BandcampDlRb
 
     def run(argv = ARGV)
       options = parse_args(argv)
+      # Remove stale partial downloads from previous interrupted runs before
+      # starting a new one.
+      BandcampDlRb::Downloader.cleanup_old_partial_downloads(options[:temp_dir])
       return 1 unless valid_options?(options)
 
       FileUtils.mkdir_p(options[:library])
