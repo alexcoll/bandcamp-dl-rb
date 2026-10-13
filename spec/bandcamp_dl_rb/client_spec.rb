@@ -214,6 +214,93 @@ RSpec.describe BandcampDlRb::Client do
     end
   end
 
+  # Bandcamp's `purchased` field is a timestamp string, but --since/--until are
+  # parsed into Date objects. Comparing the two directly raises ArgumentError,
+  # which the filter's broad rescue turns into `true` -- so both flags silently
+  # kept every item in the collection.
+  describe '#get_collection with date filtering' do
+    let(:pagedata) do
+      {
+        'collection_count' => 3,
+        'fan_data' => { 'fan_id' => 123 },
+        'item_cache' => {
+          'collection' => {
+            'a100' => purchased_item(100, '01 Jan 2023 00:00:00 GMT'),
+            'a200' => purchased_item(200, '01 Jan 2024 00:00:00 GMT'),
+            'a300' => purchased_item(300, '01 Jan 2025 00:00:00 GMT')
+          },
+          'hidden' => {}
+        },
+        'collection_data' => {
+          'item_count' => 3,
+          'last_token' => nil,
+          'redownload_urls' => {
+            'a100' => 'https://bandcamp.com/redownload/1',
+            'a200' => 'https://bandcamp.com/redownload/2',
+            'a300' => 'https://bandcamp.com/redownload/3'
+          }
+        },
+        'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
+      }
+    end
+
+    def purchased_item(id, purchased)
+      {
+        'sale_item_type' => 'a',
+        'sale_item_id' => id,
+        'band_name' => "Artist #{id}",
+        'item_title' => "Album #{id}",
+        'tralbum_type' => 'a',
+        'purchased' => purchased
+      }
+    end
+
+    before do
+      allow(client).to receive(:get_pagedata).and_return(pagedata)
+      allow(client).to receive(:fetch_collection_items).and_return(
+        'items' => [], 'redownload_urls' => {}, 'last_token' => nil
+      )
+    end
+
+    it 'keeps purchases on or after the since date' do
+      items = client.get_collection('testuser', since: Date.new(2024, 1, 1))
+      expect(items.keys).to contain_exactly('a200', 'a300')
+    end
+
+    it 'keeps purchases before the until date' do
+      items = client.get_collection('testuser', until_date: Date.new(2024, 1, 1))
+      expect(items.keys).to contain_exactly('a100')
+    end
+
+    it 'keeps purchases inside a date range' do
+      items = client.get_collection('testuser', since: Date.new(2024, 1, 1),
+                                                until_date: Date.new(2025, 1, 1))
+      expect(items.keys).to contain_exactly('a200')
+    end
+
+    it 'keeps every purchase when no filter is given' do
+      items = client.get_collection('testuser')
+      expect(items.keys).to contain_exactly('a100', 'a200', 'a300')
+    end
+
+    it 'keeps items with no purchase date' do
+      add_purchased_item(400, nil)
+      items = client.get_collection('testuser', since: Date.new(2024, 1, 1))
+      expect(items.keys).to include('a400')
+    end
+
+    it 'keeps items with an unparseable purchase date' do
+      add_purchased_item(400, 'not-a-date')
+      items = client.get_collection('testuser', since: Date.new(2024, 1, 1))
+      expect(items.keys).to include('a400')
+    end
+
+    def add_purchased_item(id, purchased)
+      pagedata['item_cache']['collection']["a#{id}"] = purchased_item(id, purchased)
+      pagedata['collection_data']['redownload_urls']["a#{id}"] = "https://bandcamp.com/redownload/#{id}"
+    end
+  end
+
   # Bandcamp's collection endpoint treats `count` as a page size but advances
   # its cursor by a fixed step, so a 100-item page yields only a handful of new
   # items and the remainder repeat the previous page. A client that budgets

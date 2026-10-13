@@ -256,7 +256,12 @@ module BandcampDlRb
     def in_date_range?(item, since, until_date)
       return true unless item['purchased']
 
-      purchased = Time.parse(item['purchased'])
+      # --since/--until are parsed into Date, but Bandcamp's `purchased` field
+      # is a timestamp string. Comparing a Time against a Date raises
+      # ArgumentError ("comparison of Time with Date failed"), which the rescue
+      # below swallowed into `true` -- so both filters silently kept every item.
+      # Reduce the timestamp to a Date so the comparison is defined.
+      purchased = Time.parse(item['purchased']).to_date
       (since.nil? || purchased >= since) && (until_date.nil? || purchased < until_date)
     rescue StandardError
       true
