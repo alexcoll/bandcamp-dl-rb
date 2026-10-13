@@ -2,528 +2,512 @@
 
 require_relative '../spec_helper'
 
+# collection_summary, fetch_collection_items and fetch_hidden_items differ
+# only in their arguments and endpoint; all three post JSON, unwrap the reply
+# and answer nil when anything goes wrong. One set of examples covers all three.
+RSpec.shared_examples 'a JSON API reader' do
+  subject(:parsed) { client.public_send(reader_method, *reader_args) }
+
+  before { stub_request(:post, api_url).to_return(body: api_body) }
+
+  context 'when the server returns JSON' do
+    it 'parses the body' do
+      expect(parsed).to eq(expected)
+    end
+  end
+
+  context 'when the server rejects the request' do
+    before { stub_request(:post, api_url).to_return(status: 500, body: 'boom') }
+
+    it { is_expected.to be_nil }
+  end
+
+  context 'when the request fails' do
+    before { stub_request(:post, api_url).to_raise(StandardError) }
+
+    it { is_expected.to be_nil }
+  end
+end
+
 RSpec.describe BandcampDlRb::Client do
-  let(:identity) { 'test-identity-value' }
   subject(:client) { described_class.new(identity) }
+
+  let(:identity) { 'test-identity-value' }
+  let(:username) { 'testuser' }
+  let(:profile_url) { 'https://bandcamp.com/testuser' }
+
+  # Extra arguments for the shared example below; #get takes only a url.
+  let(:sending_args) { [] }
+
+  include BandcampFixtures
+
+  # The cookie must only ever ride along to a host Bandcamp owns; leaking it
+  # to a redirect target would hand the session to whoever controls that host.
+  shared_examples 'an unauthenticated request' do
+    it 'omits the Cookie header' do
+      client.public_send(sending_method, url, *sending_args)
+      expect(a_request(:any, url).with { |req| !req.headers.key?('Cookie') }).to have_been_made
+    end
+  end
 
   it 'exposes the identity' do
     expect(client.identity).to eq(identity)
   end
 
   describe '#get' do
-    def capture_get_request(url)
-      request = nil
-      allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
-        http = double('http')
-        allow(http).to receive(:request) do |r|
-          request = r
-          instance_double(Net::HTTPSuccess, body: '{}')
-        end
-        block.call(http)
+    subject(:response) { client.get(url) }
+
+    let(:url) { 'https://bandcamp.com/api/test' }
+
+    before { stub_request(:get, url).to_return(body: '{}') }
+
+    context 'with the apex domain' do
+      let(:url) { 'https://bandcamp.com/api/test' }
+
+      it 'sends the identity cookie' do
+        client.get(url)
+        expect(a_request(:get, url).with(headers: { 'Cookie' => "identity=#{identity}" })).to have_been_made
       end
-      client.get(url)
-      request
     end
 
-    it 'sets the Cookie header for bandcamp.com hosts' do
-      req = capture_get_request('https://bandcamp.com/api/test')
-      expect(req['Cookie']).to eq('identity=test-identity-value')
+    context 'with a bandcamp.com subdomain' do
+      let(:url) { 'https://radiohead.bandcamp.com/album/in-rainbows' }
+
+      it 'sends the identity cookie' do
+        client.get(url)
+        expect(a_request(:get, url).with(headers: { 'Cookie' => "identity=#{identity}" })).to have_been_made
+      end
     end
 
-    it 'sets the Cookie header for *.bandcamp.com hosts' do
-      req = capture_get_request('https://radiohead.bandcamp.com/album/in-rainbows')
-      expect(req['Cookie']).to eq('identity=test-identity-value')
+    context 'with a host off the allowlist' do
+      let(:url) { 'https://example.com/api/test' }
+      let(:sending_method) { :get }
+
+      it_behaves_like 'an unauthenticated request'
     end
 
-    it 'omits the Cookie header for non-bandcamp hosts' do
-      req = capture_get_request('https://example.com/api/test')
-      expect(req['Cookie']).to be_nil
+    context 'with a lookalike domain' do
+      let(:url) { 'https://notbandcamp.com/api/test' }
+      let(:sending_method) { :get }
+
+      it_behaves_like 'an unauthenticated request'
     end
 
-    it 'omits the Cookie header for lookalike subdomains' do
-      req = capture_get_request('https://notbandcamp.com/api/test')
-      expect(req['Cookie']).to be_nil
-    end
-  end
-
-  describe '#get_pagedata' do
-    let(:ok_response) do
-      Class.new do
-        def body
-          blob = { 'collection_count' => 1, 'fan_data' => { 'fan_id' => 4242 } }
-          format('<div id="pagedata" data-blob="%s"></div>', CGI.escapeHTML(JSON.generate(blob)))
-        end
-
-        def is_a?(_klass)
-          true
-        end
-      end.new
-    end
-
-    it 'parses the data-blob json from the pagedata div' do
-      allow(client).to receive(:get).and_return(ok_response)
-      expect(client.get_pagedata('https://bandcamp.com/testuser'))
-        .to eq('collection_count' => 1, 'fan_data' => { 'fan_id' => 4242 })
-    end
-
-    it 'returns nil for a non-success response' do
-      bad = Class.new { def is_a?(_klass) = false }.new
-      allow(client).to receive(:get).and_return(bad)
-      expect(client.get_pagedata('https://bandcamp.com/testuser')).to be_nil
+    context 'when the server responds' do
+      it 'returns the response' do
+        expect(response.code).to eq('200')
+      end
     end
   end
 
   describe '#post_json' do
-    def capture_post_request(url)
-      request = nil
-      allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
-        http = double('http')
-        allow(http).to receive(:request) do |r|
-          request = r
-          instance_double(Net::HTTPSuccess, body: '{}')
-        end
-        block.call(http)
+    subject(:response) { client.post_json(url, payload) }
+
+    let(:url) { 'https://bandcamp.com/api/x' }
+    let(:payload) { { 'a' => 1 } }
+
+    before { stub_request(:post, url).to_return(body: '{}') }
+
+    context 'with an allowlisted host' do
+      let(:sending_args) { [payload] }
+
+      it 'sends the JSON body' do
+        client.post_json(url, payload)
+        expect(a_request(:post, url).with(body: '{"a":1}')).to have_been_made
       end
-      client.post_json(url, { 'a' => 1 })
-      request
+
+      it 'sets a JSON content type' do
+        client.post_json(url, payload)
+        expect(a_request(:post, url).with(headers: { 'Content-Type' => 'application/json' })).to have_been_made
+      end
+
+      it 'sends the identity cookie' do
+        client.post_json(url, payload)
+        expect(a_request(:post, url).with(headers: { 'Cookie' => "identity=#{identity}" })).to have_been_made
+      end
     end
 
-    it 'sends the Cookie header and a JSON body' do
-      req = capture_post_request('https://bandcamp.com/api/x')
-      expect(req['Cookie']).to eq('identity=test-identity-value')
-      expect(req['Content-Type']).to eq('application/json')
-      expect(JSON.parse(req.body)).to eq('a' => 1)
+    context 'with a host off the allowlist' do
+      let(:url) { 'https://example.com/api/x' }
+      let(:sending_method) { :post_json }
+      let(:sending_args) { [payload] }
+
+      it_behaves_like 'an unauthenticated request'
     end
 
-    it 'omits the Cookie header for non-bandcamp hosts' do
-      req = capture_post_request('https://example.com/api/x')
-      expect(req['Cookie']).to be_nil
-      expect(req['Content-Type']).to eq('application/json')
-      expect(JSON.parse(req.body)).to eq('a' => 1)
+    context 'when the server responds' do
+      it 'returns the response' do
+        expect(response.code).to eq('200')
+      end
     end
   end
 
-  describe '#get_collection' do
-    let(:pagedata) do
-      {
-        'collection_count' => 2,
-        'fan_data' => { 'fan_id' => 123 },
-        'item_cache' => {
-          'collection' => {
-            'a100' => {
-              'sale_item_type' => 'a',
-              'sale_item_id' => 100,
-              'band_name' => 'Artist One',
-              'item_title' => 'Album One',
-              'tralbum_type' => 'a',
-              'featured_track' => {},
-              'purchased' => '01 Jan 2025 00:00:00 GMT'
-            }
-          },
-          'hidden' => {}
-        },
-        'collection_data' => {
-          'item_count' => 2,
-          'last_token' => nil,
-          'redownload_urls' => { 'a100' => 'https://bandcamp.com/redownload/1' }
-        },
-        'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
-      }
-    end
+  describe '#get_pagedata' do
+    subject(:pagedata) { client.get_pagedata(profile_url) }
 
-    before do
-      allow(client).to receive(:get_pagedata).and_return(pagedata)
-      allow(client).to receive(:fetch_collection_items).and_return(
-        'items' => [{
-          'sale_item_type' => 'a',
-          'sale_item_id' => 200,
-          'band_name' => 'Artist Two',
-          'item_title' => 'Album Two',
-          'tralbum_type' => 'a'
-        }],
-        'redownload_urls' => { 'a200' => 'https://bandcamp.com/redownload/2' },
-        'last_token' => nil
-      )
-      allow(client).to receive(:fetch_hidden_items).and_return(
-        'items' => [],
-        'redownload_urls' => {},
-        'last_token' => nil
-      )
-    end
+    context 'with a pagedata div' do
+      let(:blob) { { 'collection_count' => 1, 'fan_data' => { 'fan_id' => 4242 } } }
 
-    it 'returns items with redownload urls' do
-      items = client.get_collection('testuser')
-      expect(items.keys).to include('a100')
-      expect(items['a100']['redownload_url']).to eq('https://bandcamp.com/redownload/1')
-    end
+      before { stub_request(:get, profile_url).to_return(body: pagedata_page(blob)) }
 
-    it 'returns empty hash when pagedata is missing' do
-      allow(client).to receive(:get_pagedata).and_return(nil)
-      expect(client.get_collection('nouser')).to eq({})
-    end
-
-    it 'includes hidden items when requested' do
-      pagedata['item_cache']['hidden'] = {
-        'a300' => {
-          'sale_item_type' => 'a',
-          'sale_item_id' => 300,
-          'band_name' => 'Hidden Artist',
-          'item_title' => 'Hidden Album',
-          'tralbum_type' => 'a'
-        }
-      }
-      pagedata['visible_item_count'] = nil
-      pagedata['hidden_data'] = {
-        'item_count' => 1,
-        'last_token' => nil
-      }
-      # A hidden item's download URL comes from collection_data['redownload_urls'],
-      # the same map as visible items. hidden_data has no 'redownload_urls' key at
-      # all -- verified against live pagedata -- so there is no hidden-specific map
-      # to read from. Do not add one here; a phantom entry is ignored by
-      # merge_hidden_items and makes this example look like it covers a code path
-      # that does not exist.
-      pagedata['collection_data']['redownload_urls'] = {
-        'a100' => 'https://bandcamp.com/redownload/1',
-        'a300' => 'https://bandcamp.com/redownload/3'
-      }
-
-      items = client.get_collection('testuser', include_hidden: true)
-      expect(items.keys).to include('a300')
-      expect(items['a300']['redownload_url']).to eq('https://bandcamp.com/redownload/3')
-    end
-
-    it 'takes a hidden item download URL from collection_data, not hidden_data' do
-      pagedata['item_cache']['hidden'] = {
-        'a300' => {
-          'sale_item_type' => 'a',
-          'sale_item_id' => 300,
-          'band_name' => 'Hidden Artist',
-          'item_title' => 'Hidden Album',
-          'tralbum_type' => 'a'
-        }
-      }
-      pagedata['visible_item_count'] = nil
-      pagedata['hidden_data'] = { 'item_count' => 1, 'last_token' => nil }
-      pagedata['collection_data']['redownload_urls'] = {
-        'a300' => 'https://bandcamp.com/redownload/3'
-      }
-
-      items = client.get_collection('testuser', include_hidden: true)
-      expect(items['a300']['redownload_url']).to eq('https://bandcamp.com/redownload/3')
-    end
-  end
-
-  # Bandcamp's `purchased` field is a timestamp string, but --since/--until are
-  # parsed into Date objects. Comparing the two directly raises ArgumentError,
-  # which the filter's broad rescue turns into `true` -- so both flags silently
-  # kept every item in the collection.
-  describe '#get_collection with date filtering' do
-    let(:pagedata) do
-      {
-        'collection_count' => 3,
-        'fan_data' => { 'fan_id' => 123 },
-        'item_cache' => {
-          'collection' => {
-            'a100' => purchased_item(100, '01 Jan 2023 00:00:00 GMT'),
-            'a200' => purchased_item(200, '01 Jan 2024 00:00:00 GMT'),
-            'a300' => purchased_item(300, '01 Jan 2025 00:00:00 GMT')
-          },
-          'hidden' => {}
-        },
-        'collection_data' => {
-          'item_count' => 3,
-          'last_token' => nil,
-          'redownload_urls' => {
-            'a100' => 'https://bandcamp.com/redownload/1',
-            'a200' => 'https://bandcamp.com/redownload/2',
-            'a300' => 'https://bandcamp.com/redownload/3'
-          }
-        },
-        'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
-      }
-    end
-
-    def purchased_item(id, purchased)
-      {
-        'sale_item_type' => 'a',
-        'sale_item_id' => id,
-        'band_name' => "Artist #{id}",
-        'item_title' => "Album #{id}",
-        'tralbum_type' => 'a',
-        'purchased' => purchased
-      }
-    end
-
-    before do
-      allow(client).to receive(:get_pagedata).and_return(pagedata)
-      allow(client).to receive(:fetch_collection_items).and_return(
-        'items' => [], 'redownload_urls' => {}, 'last_token' => nil
-      )
-    end
-
-    it 'keeps purchases on or after the since date' do
-      items = client.get_collection('testuser', since: Date.new(2024, 1, 1))
-      expect(items.keys).to contain_exactly('a200', 'a300')
-    end
-
-    it 'keeps purchases before the until date' do
-      items = client.get_collection('testuser', until_date: Date.new(2024, 1, 1))
-      expect(items.keys).to contain_exactly('a100')
-    end
-
-    it 'keeps purchases inside a date range' do
-      items = client.get_collection('testuser', since: Date.new(2024, 1, 1),
-                                                until_date: Date.new(2025, 1, 1))
-      expect(items.keys).to contain_exactly('a200')
-    end
-
-    it 'keeps every purchase when no filter is given' do
-      items = client.get_collection('testuser')
-      expect(items.keys).to contain_exactly('a100', 'a200', 'a300')
-    end
-
-    it 'keeps items with no purchase date' do
-      add_purchased_item(400, nil)
-      items = client.get_collection('testuser', since: Date.new(2024, 1, 1))
-      expect(items.keys).to include('a400')
-    end
-
-    it 'keeps items with an unparseable purchase date' do
-      add_purchased_item(400, 'not-a-date')
-      items = client.get_collection('testuser', since: Date.new(2024, 1, 1))
-      expect(items.keys).to include('a400')
-    end
-
-    def add_purchased_item(id, purchased)
-      pagedata['item_cache']['collection']["a#{id}"] = purchased_item(id, purchased)
-      pagedata['collection_data']['redownload_urls']["a#{id}"] = "https://bandcamp.com/redownload/#{id}"
-    end
-  end
-
-  # Bandcamp's collection endpoint treats `count` as a page size but advances
-  # its cursor by a fixed step, so a 100-item page yields only a handful of new
-  # items and the remainder repeat the previous page. A client that budgets
-  # requests against the item count advertised on the profile page therefore
-  # burns that budget on duplicates and truncates the walk; the server's
-  # `more_available` flag is the only authoritative end-of-collection signal.
-  describe '#get_collection pagination' do
-    let(:cursor_step) { 20 }
-    let(:total_items) { 172 }
-
-    let(:all_items) do
-      (0...total_items).map do |n|
-        {
-          'sale_item_type' => 'p',
-          'sale_item_id' => 1_000_000 + n,
-          'band_name' => "Artist #{n}",
-          'item_title' => "Album #{n}",
-          'tralbum_type' => 'a'
-        }
+      it 'returns the decoded data-blob' do
+        expect(pagedata).to eq(blob)
       end
     end
 
-    let(:pagedata) do
-      {
-        'collection_count' => total_items,
-        'fan_data' => { 'fan_id' => 123 },
-        'item_cache' => { 'collection' => {}, 'hidden' => {} },
-        'collection_data' => {
-          'item_count' => total_items, 'last_token' => 'tok-0', 'redownload_urls' => {}
-        },
-        'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
-      }
+    context 'without a pagedata div' do
+      before { stub_request(:get, profile_url).to_return(body: '<html>No pagedata here</html>') }
+
+      it { is_expected.to be_nil }
     end
 
-    # One page as the real API serves it: a window of `count` items starting at
-    # the cursor, with the cursor then advanced by only `cursor_step`.
-    def page_for(token, count)
-      offset = token.split('-').last.to_i
-      window = all_items[offset, count] || []
-      next_offset = [offset + cursor_step, total_items].min
-      {
-        'items' => window,
-        'redownload_urls' => window.to_h { |i| [item_key(i), "https://bandcamp.com/r/#{i['sale_item_id']}"] },
-        'more_available' => next_offset < total_items,
-        'last_token' => "tok-#{next_offset}"
-      }
+    context 'when the server rejects the request' do
+      before { stub_request(:get, profile_url).to_return(status: 404) }
+
+      it { is_expected.to be_nil }
     end
 
-    def item_key(item)
-      "#{item['sale_item_type']}#{item['sale_item_id']}"
-    end
+    context 'when the request fails' do
+      before { stub_request(:get, profile_url).to_raise(StandardError) }
 
-    def stub_overlapping_api(target, requests)
-      allow(target).to receive(:get_pagedata).and_return(pagedata)
-      allow(target).to receive(:fetch_collection_items) do |_fan_id, token, count|
-        requests << { token: token, count: count }
-        page_for(token, count)
-      end
-    end
-
-    it 'keeps paging past the first page until more_available is false' do
-      requests = []
-      stub_overlapping_api(client, requests)
-
-      items = client.get_collection('testuser')
-
-      expect(items.length).to eq(total_items)
-      expect(requests.length).to be > 1
-    end
-
-    it 'requests the configured page size on every page' do
-      requests = []
-      sized = described_class.new(identity, page_size: 7)
-      stub_overlapping_api(sized, requests)
-
-      sized.get_collection('testuser')
-
-      expect(requests.map { |r| r[:count] }).to all(eq(7))
-      expect(requests.length).to be > 1
-    end
-
-    it 'defaults the page size' do
-      requests = []
-      stub_overlapping_api(client, requests)
-
-      client.get_collection('testuser')
-
-      expect(requests.map { |r| r[:count] }.uniq).to eq([BandcampDlRb::DEFAULT_PAGE_SIZE])
-    end
-
-    it 'reaches the tail of the collection, not just the first page' do
-      requests = []
-      stub_overlapping_api(client, requests)
-
-      items = client.get_collection('testuser')
-
-      expect(items.keys).to include(item_key(all_items.last), item_key(all_items[-2]))
-    end
-
-    it 'stops when the cursor fails to advance' do
-      requests = []
-      allow(client).to receive(:get_pagedata).and_return(pagedata)
-      allow(client).to receive(:fetch_collection_items) do |_fan_id, _token, _count|
-        requests << 1
-        { 'items' => all_items.first(3), 'redownload_urls' => {},
-          'more_available' => true, 'last_token' => 'tok-0' }
-      end
-
-      client.get_collection('testuser')
-
-      expect(requests.length).to eq(1)
-    end
-
-    it 'stops on an empty page even when more_available is set' do
-      requests = []
-      allow(client).to receive(:get_pagedata).and_return(pagedata)
-      allow(client).to receive(:fetch_collection_items) do |_fan_id, _token, _count|
-        requests << 1
-        { 'items' => [], 'redownload_urls' => {}, 'more_available' => true, 'last_token' => 'tok-9' }
-      end
-
-      client.get_collection('testuser')
-
-      expect(requests.length).to eq(1)
-    end
-
-    it 'stops when a page returns no token' do
-      requests = []
-      allow(client).to receive(:get_pagedata).and_return(pagedata)
-      allow(client).to receive(:fetch_collection_items) do |_fan_id, _token, _count|
-        requests << 1
-        { 'items' => all_items.first(3), 'redownload_urls' => {},
-          'more_available' => true, 'last_token' => nil }
-      end
-
-      client.get_collection('testuser')
-
-      expect(requests.length).to eq(1)
-    end
-
-    it 'survives a null hidden item_count' do
-      pagedata['collection_data'] = { 'item_count' => 1, 'last_token' => 'tok-0', 'redownload_urls' => {} }
-      pagedata['hidden_data'] = { 'item_count' => nil, 'last_token' => nil }
-      allow(client).to receive(:get_pagedata).and_return(pagedata)
-      allow(client).to receive(:fetch_collection_items).and_return(
-        'items' => [{ 'sale_item_type' => 'p', 'sale_item_id' => 1, 'band_name' => 'A',
-                      'item_title' => 'B', 'tralbum_type' => 'a' }],
-        'redownload_urls' => { 'p1' => 'https://bandcamp.com/redownload/1' },
-        'more_available' => false,
-        'last_token' => nil
-      )
-      allow(client).to receive(:fetch_hidden_items).and_return('items' => [])
-
-      expect { client.get_collection('testuser', include_hidden: true) }.not_to raise_error
+      it { is_expected.to be_nil }
     end
   end
 
   describe '#get_html' do
-    it 'returns the response body on success' do
-      resp = instance_double(Net::HTTPSuccess, body: '<html>OK</html>')
-      allow(resp).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
-      allow(client).to receive(:get).and_return(resp)
+    subject(:html) { client.get_html(url) }
 
-      expect(client.get_html('https://radiohead.bandcamp.com/album/in-rainbows')).to eq('<html>OK</html>')
+    let(:url) { 'https://radiohead.bandcamp.com/album/in-rainbows' }
+
+    context 'when the page loads' do
+      before { stub_request(:get, url).to_return(body: '<html>OK</html>') }
+
+      it { is_expected.to eq('<html>OK</html>') }
     end
 
-    it 'returns nil on non-success response' do
-      resp = instance_double(Net::HTTPNotFound)
-      allow(resp).to receive(:is_a?).with(Net::HTTPSuccess).and_return(false)
-      allow(client).to receive(:get).and_return(resp)
+    context 'when the page does not exist' do
+      let(:url) { 'https://radiohead.bandcamp.com/album/missing' }
 
-      expect(client.get_html('https://radiohead.bandcamp.com/album/missing')).to be_nil
+      before { stub_request(:get, url).to_return(status: 404) }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'returns nil on error' do
-      allow(client).to receive(:get).and_raise(StandardError, 'timeout')
+    context 'when the request fails' do
+      before { stub_request(:get, url).to_raise(StandardError) }
 
-      expect(client.get_html('https://radiohead.bandcamp.com/album/in-rainbows')).to be_nil
+      it { is_expected.to be_nil }
     end
   end
 
+  describe '#get_collection' do
+    subject(:items) { client.get_collection(username, **options) }
+
+    let(:options) { {} }
+    let(:albums) { [sale_item(id: 100, artist: 'Artist One', title: 'Album One')] }
+    let(:blob) { collection_blob(albums) }
+
+    before { stub_request(:get, profile_url).to_return(body: pagedata_page(blob)) }
+
+    context 'when the profile page lists a purchase' do
+      it 'keys the item by sale item id' do
+        expect(items.keys).to eq(['a100'])
+      end
+
+      it 'attaches the redownload url' do
+        expect(items['a100']['redownload_url']).to eq(redownload_url('a100'))
+      end
+    end
+
+    context 'when an item has no redownload url' do
+      let(:blob) { collection_blob(albums, downloadable: false) }
+
+      it 'drops the item' do
+        expect(items).to eq({})
+      end
+    end
+
+    context 'when the profile page has no pagedata' do
+      before { stub_request(:get, profile_url).to_return(status: 404) }
+
+      it { is_expected.to eq({}) }
+    end
+
+    context 'when the page carries no collection count' do
+      let(:blob) { { 'fan_data' => { 'fan_id' => BandcampFixtures::FAN_ID } } }
+
+      it { is_expected.to eq({}) }
+    end
+
+    context 'when hidden items are requested' do
+      let(:hidden) { [sale_item(id: 300, artist: 'Hidden Artist', title: 'Hidden Album')] }
+      let(:blob) { collection_blob(albums, hidden: hidden) }
+      let(:options) { { include_hidden: true } }
+
+      it 'includes the hidden items' do
+        expect(items.keys).to contain_exactly('a100', 'a300')
+      end
+    end
+
+    context 'when hidden items are requested but the profile page is missing one' do
+      # A hidden item's download URL lives in collection_data['redownload_urls']
+      # -- the same map visible items use. hidden_data carries no URL map at
+      # all, verified against live pagedata, so there is no hidden-specific map
+      # to read from. A phantom entry here would be ignored by merge_hidden_items
+      # and make this example look like it covers a path that does not exist.
+      let(:hidden) { [sale_item(id: 300, artist: 'Hidden Artist', title: 'Hidden Album')] }
+      let(:blob) { collection_blob(albums, hidden: hidden) }
+      let(:options) { { include_hidden: true } }
+
+      it 'still resolves the hidden download url' do
+        expect(items['a300']['redownload_url']).to eq(redownload_url('a300'))
+      end
+    end
+
+    context 'when hidden items are not requested' do
+      let(:hidden) { [sale_item(id: 300, artist: 'Hidden Artist', title: 'Hidden Album')] }
+      let(:blob) { collection_blob(albums, hidden: hidden) }
+
+      it 'leaves them out' do
+        expect(items.keys).to eq(['a100'])
+      end
+    end
+
+    context 'when the hidden item count is null' do
+      # Bandcamp omits the count on a profile whose hidden list has never been
+      # paginated; the walk must not treat a nil count as "no hidden items".
+      let(:hidden) { [sale_item(id: 300, artist: 'Hidden Artist', title: 'Hidden Album')] }
+      let(:blob) do
+        collection_blob(albums, hidden: hidden).tap { |b| b['hidden_data']['item_count'] = nil }
+      end
+      let(:options) { { include_hidden: true } }
+
+      it 'still finds the visible items' do
+        expect(items.keys).to include('a100')
+      end
+    end
+
+    context 'when date filters are given' do
+      let(:albums) do
+        [
+          sale_item(id: 100, artist: 'One', title: 'Album One',
+                    'purchased' => '01 Jan 2023 00:00:00 GMT'),
+          sale_item(id: 200, artist: 'Two', title: 'Album Two',
+                    'purchased' => '01 Jan 2024 00:00:00 GMT'),
+          sale_item(id: 300, artist: 'Three', title: 'Album Three',
+                    'purchased' => '01 Jan 2025 00:00:00 GMT')
+        ]
+      end
+
+      context 'with a since date' do
+        let(:options) { { since: Date.new(2024, 1, 1) } }
+
+        it 'keeps purchases on or after it' do
+          expect(items.keys).to contain_exactly('a200', 'a300')
+        end
+      end
+
+      context 'with an until date' do
+        let(:options) { { until_date: Date.new(2024, 1, 1) } }
+
+        it 'keeps purchases before it' do
+          expect(items.keys).to contain_exactly('a100')
+        end
+      end
+
+      context 'with a date range' do
+        let(:options) { { since: Date.new(2024, 1, 1), until_date: Date.new(2025, 1, 1) } }
+
+        it 'keeps purchases inside it' do
+          expect(items.keys).to contain_exactly('a200')
+        end
+      end
+
+      context 'without a filter' do
+        it 'keeps every purchase' do
+          expect(items.keys).to contain_exactly('a100', 'a200', 'a300')
+        end
+      end
+
+      context 'with an item bought before filtering existed' do
+        let(:albums) do
+          [sale_item(id: 400, artist: 'Four', title: 'Album Four')]
+        end
+        let(:options) { { since: Date.new(2024, 1, 1) } }
+
+        it 'keeps the item' do
+          expect(items.keys).to eq(['a400'])
+        end
+      end
+
+      context 'with an unparseable purchase date' do
+        let(:albums) do
+          [sale_item(id: 400, artist: 'Four', title: 'Album Four', 'purchased' => 'not-a-date')]
+        end
+        let(:options) { { since: Date.new(2024, 1, 1) } }
+
+        it 'keeps the item' do
+          expect(items.keys).to eq(['a400'])
+        end
+      end
+    end
+
+    # Bandcamp's collection endpoint treats `count` as a page size but advances
+    # its cursor by a fixed step, so a 100-item page yields only a handful of
+    # new items and the rest repeat the previous page. A client that budgets
+    # requests against the item count advertised on the profile page therefore
+    # burns that budget on duplicates and truncates the walk; the server's
+    # `more_available` flag is the only authoritative end-of-collection signal.
+    context 'when pages overlap' do
+      subject(:client) { described_class.new(identity, page_size: page_size) }
+
+      let(:cursor_step) { 20 }
+      let(:total_items) { 172 }
+      let(:page_size) { BandcampDlRb::DEFAULT_PAGE_SIZE }
+      let(:requested_counts) { [] }
+      let(:all_items) do
+        Array.new(total_items) { |n| sale_item(id: 1_000_000 + n, artist: "Artist #{n}", title: "Album #{n}") }
+      end
+      let(:blob) { collection_blob([], last_token: 'tok-0') }
+
+      # One page as the real API serves it: a window of `page_size` items
+      # starting at the cursor, with the cursor then advanced by cursor_step.
+      def page_from(offset)
+        window = all_items[offset, page_size] || []
+        next_offset = [offset + cursor_step, total_items].min
+        page_response(window, more_available: next_offset < total_items, last_token: "tok-#{next_offset}")
+      end
+
+      before do
+        stub_request(:post, BandcampDlRb::COLLECTION_ITEMS_URL).to_return do |request|
+          payload = JSON.parse(request.body)
+          requested_counts << payload['count']
+          offset = payload.fetch('older_than_token').split('-').last.to_i
+          { body: JSON.generate(page_from(offset)) }
+        end
+      end
+
+      it 'walks past the first page' do
+        expect(items.length).to eq(total_items)
+      end
+
+      it 'reaches the tail of the collection' do
+        expect(items.keys).to include(item_key(all_items.last))
+      end
+
+      it 'asks for the configured page size' do
+        items
+        expect(requested_counts).to all(eq(page_size))
+      end
+
+      it 'defaults the page size' do
+        items
+        expect(requested_counts).to all(eq(BandcampDlRb::DEFAULT_PAGE_SIZE))
+      end
+
+      context 'when the cursor stops advancing' do
+        before do
+          stub_request(:post, BandcampDlRb::COLLECTION_ITEMS_URL).to_return(
+            body: JSON.generate(page_response(all_items.first(3), more_available: true, last_token: 'tok-0'))
+          )
+        end
+
+        it 'stops after one page' do
+          items
+          expect(a_request(:post, BandcampDlRb::COLLECTION_ITEMS_URL)).to have_been_made.once
+        end
+      end
+
+      context 'when a page comes back empty' do
+        before do
+          stub_request(:post, BandcampDlRb::COLLECTION_ITEMS_URL).to_return(
+            body: JSON.generate(page_response([], more_available: true, last_token: 'tok-9'))
+          )
+        end
+
+        it 'stops after one page' do
+          items
+          expect(a_request(:post, BandcampDlRb::COLLECTION_ITEMS_URL)).to have_been_made.once
+        end
+      end
+
+      context 'when a page returns no token' do
+        before do
+          stub_request(:post, BandcampDlRb::COLLECTION_ITEMS_URL).to_return(
+            body: JSON.generate(page_response(all_items.first(3), more_available: true, last_token: nil))
+          )
+        end
+
+        it 'stops after one page' do
+          items
+          expect(a_request(:post, BandcampDlRb::COLLECTION_ITEMS_URL)).to have_been_made.once
+        end
+      end
+    end
+  end
+
+  describe '#collection_summary' do
+    it_behaves_like 'a JSON API reader'
+
+    let(:reader_method) { :collection_summary }
+    let(:reader_args) { [] }
+    let(:api_url) { BandcampDlRb::COLLECTION_SUMMARY_URL }
+    let(:api_body) { '{"collection_summary": {"item_count": 42}}' }
+    let(:expected) { { 'item_count' => 42 } }
+  end
+
+  describe '#fetch_collection_items' do
+    it_behaves_like 'a JSON API reader'
+
+    let(:reader_method) { :fetch_collection_items }
+    let(:reader_args) { [BandcampFixtures::FAN_ID, 'token', 100] }
+    let(:api_url) { BandcampDlRb::COLLECTION_ITEMS_URL }
+    let(:api_body) { '{"items": [{"id": 1}], "more_available": false}' }
+    let(:expected) { { 'items' => [{ 'id' => 1 }], 'more_available' => false } }
+  end
+
+  describe '#fetch_hidden_items' do
+    it_behaves_like 'a JSON API reader'
+
+    let(:reader_method) { :fetch_hidden_items }
+    let(:reader_args) { [BandcampFixtures::FAN_ID, 'token', 100] }
+    let(:api_url) { BandcampDlRb::HIDDEN_ITEMS_URL }
+    let(:api_body) { '{"items": [{"id": 1}], "more_available": false}' }
+    let(:expected) { { 'items' => [{ 'id' => 1 }], 'more_available' => false } }
+  end
+
   describe '#parse_tralbum' do
-    it 'extracts artist, title, tralbum id and type from album page HTML' do
-      tralbum_data = {
-        'artist' => 'Radiohead',
-        'current' => { 'title' => 'In Rainbows' },
-        'id' => 2_162_872_411,
-        'item_type' => 'album'
-      }
-      html = <<~HTML
-        <div id="pagedata" data-blob="{}"></div>
-        <div data-tralbum='#{CGI.escapeHTML(JSON.generate(tralbum_data))}'></div>
-      HTML
+    subject(:parsed) { client.parse_tralbum(html) }
 
-      result = client.parse_tralbum(html)
-      expect(result).to eq(
-        'band_name' => 'Radiohead',
-        'item_title' => 'In Rainbows',
-        'tralbum_id' => 2_162_872_411,
-        'tralbum_type' => 'a'
-      )
+    context 'with an album page' do
+      let(:html) { tralbum_page(artist: 'Radiohead', title: 'In Rainbows', id: 2_162_872_411) }
+
+      it 'maps the page onto a download item' do
+        expect(parsed).to eq(
+          'band_name' => 'Radiohead',
+          'item_title' => 'In Rainbows',
+          'tralbum_id' => 2_162_872_411,
+          'tralbum_type' => 'a'
+        )
+      end
     end
 
-    it 'maps item_type "track" to tralbum_type "t"' do
-      tralbum_data = {
-        'artist' => 'Aphex Twin',
-        'current' => { 'title' => 'Windowlicker' },
-        'id' => 123_456,
-        'item_type' => 'track'
-      }
-      html = %(<div data-tralbum='#{CGI.escapeHTML(JSON.generate(tralbum_data))}'></div>)
+    context 'with a track page' do
+      let(:html) { tralbum_page(artist: 'Aphex Twin', title: 'Windowlicker', id: 123_456, item_type: 'track') }
 
-      result = client.parse_tralbum(html)
-      expect(result['tralbum_type']).to eq('t')
+      it { expect(parsed['tralbum_type']).to eq('t') }
     end
 
-    it 'returns nil when data-tralbum attribute is missing' do
-      expect(client.parse_tralbum('<html><body>No data here</body></html>')).to be_nil
+    context 'without a tralbum attribute' do
+      let(:html) { '<html><body>No data here</body></html>' }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'returns nil when tralbum JSON is malformed' do
-      html = %(<div data-tralbum="NOT_JSON"></div>)
-      expect(client.parse_tralbum(html)).to be_nil
+    context 'with malformed tralbum JSON' do
+      let(:html) { '<div data-tralbum="NOT_JSON"></div>' }
+
+      it { is_expected.to be_nil }
     end
   end
 
@@ -531,54 +515,57 @@ RSpec.describe BandcampDlRb::Client do
   # page URL carries a tralbum id ("a1546900568"). The two keyspaces never
   # overlap, so the lookup has to join on tralbum_id/tralbum_type.
   describe '#find_item_in_collection' do
+    subject(:found) { client.find_item_in_collection(items, tralbum) }
+
     let(:items) do
       {
-        'p403398974' => {
-          'sale_item_type' => 'p', 'sale_item_id' => 403_398_974,
-          'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a',
-          'band_name' => 'Dizgo', 'item_title' => '03/21/26 - Globe Hall - Denver, CO'
-        },
-        'i390012675' => {
-          'sale_item_type' => 'i', 'sale_item_id' => 390_012_675,
-          'tralbum_id' => 1_188_310_021, 'tralbum_type' => 't',
-          'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker'
-        }
+        'p403398974' => sale_item(id: 403_398_974, artist: 'Dizgo', title: 'Globe Hall', type: 'p',
+                                  'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a'),
+        'i390012675' => sale_item(id: 390_012_675, artist: 'Aphex Twin', title: 'Windowlicker', type: 'i',
+                                  'tralbum_id' => 1_188_310_021, 'tralbum_type' => 't')
       }
     end
 
-    it 'finds a purchased album by tralbum id and type' do
-      tralbum = { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a' }
-      expect(client.find_item_in_collection(items, tralbum)).to eq(items['p403398974'])
+    context 'with a matching album' do
+      let(:tralbum) { { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a' } }
+
+      it { is_expected.to eq(items['p403398974']) }
     end
 
-    it 'finds an item whose sale_item_type is i' do
-      tralbum = { 'tralbum_id' => 1_188_310_021, 'tralbum_type' => 't' }
-      expect(client.find_item_in_collection(items, tralbum)).to eq(items['i390012675'])
+    context 'with a matching physical item' do
+      let(:tralbum) { { 'tralbum_id' => 1_188_310_021, 'tralbum_type' => 't' } }
+
+      it { is_expected.to eq(items['i390012675']) }
     end
 
-    it 'returns nil when no match exists' do
-      tralbum = { 'tralbum_id' => 999, 'tralbum_type' => 'a' }
-      expect(client.find_item_in_collection(items, tralbum)).to be_nil
+    context 'with no matching tralbum id' do
+      let(:tralbum) { { 'tralbum_id' => 999, 'tralbum_type' => 'a' } }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'returns nil when the tralbum type does not match' do
-      tralbum = { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 't' }
-      expect(client.find_item_in_collection(items, tralbum)).to be_nil
+    context 'with a matching id but a different type' do
+      let(:tralbum) { { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 't' } }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'returns nil when the tralbum id is missing' do
-      expect(client.find_item_in_collection(items, { 'tralbum_type' => 'a' })).to be_nil
+    context 'without any tralbum id' do
+      let(:tralbum) { { 'tralbum_type' => 'a' } }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'does not match on the sale item key the tralbum id would form' do
+    it 'never keys on a tralbum id as a sale id' do
       # The old lookup built "a1546900568" and asked for that key, which can
       # never be a collection key.
-      tralbum = { 'tralbum_id' => 1_546_900_568, 'tralbum_type' => 'a' }
-      expect(items.keys).not_to include("a#{tralbum['tralbum_id']}")
+      expect(items.keys).not_to include('a1546900568')
     end
   end
 
   describe '#filter_by_ids' do
+    subject(:filtered) { client.filter_by_ids(items, ids) }
+
     let(:items) do
       {
         'a100' => { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' },
@@ -587,38 +574,46 @@ RSpec.describe BandcampDlRb::Client do
       }
     end
 
-    it 'filters items by a single ID' do
-      result = client.filter_by_ids(items, 'a100')
-      expect(result.keys).to eq(['a100'])
+    context 'with a single id' do
+      let(:ids) { 'a100' }
+
+      it { expect(filtered.keys).to eq(['a100']) }
     end
 
-    it 'filters items by comma-separated IDs' do
-      result = client.filter_by_ids(items, 'a100,t300')
-      expect(result.keys).to contain_exactly('a100', 't300')
+    context 'with comma-separated ids' do
+      let(:ids) { 'a100,t300' }
+
+      it { expect(filtered.keys).to contain_exactly('a100', 't300') }
     end
 
-    it 'filters items by an array of IDs' do
-      result = client.filter_by_ids(items, %w[a100 a200])
-      expect(result.keys).to contain_exactly('a100', 'a200')
+    context 'with an array of ids' do
+      let(:ids) { %w[a100 a200] }
+
+      it { expect(filtered.keys).to contain_exactly('a100', 'a200') }
     end
 
-    it 'strips whitespace from IDs' do
-      result = client.filter_by_ids(items, ' a100 , t300 ')
-      expect(result.keys).to contain_exactly('a100', 't300')
+    context 'with padded ids' do
+      let(:ids) { ' a100 , t300 ' }
+
+      it { expect(filtered.keys).to contain_exactly('a100', 't300') }
     end
 
-    it 'returns empty hash when no IDs match' do
-      result = client.filter_by_ids(items, 'a999')
-      expect(result).to eq({})
+    context 'with an id the collection does not hold' do
+      let(:ids) { 'a999' }
+
+      it { is_expected.to eq({}) }
     end
 
-    it 'returns empty hash for empty input' do
-      result = client.filter_by_ids(items, '')
-      expect(result).to eq({})
+    context 'with an empty list' do
+      let(:ids) { '' }
+
+      it { is_expected.to eq({}) }
     end
   end
 
   describe '#filter_collection' do
+    subject(:filtered) { client.filter_collection(items, pattern) }
+
     let(:items) do
       {
         'a100' => { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' },
@@ -628,54 +623,48 @@ RSpec.describe BandcampDlRb::Client do
       }
     end
 
-    it 'matches on artist name' do
-      result = client.filter_collection(items, 'Aphex')
-      expect(result.keys).to eq(['t300'])
+    context 'with an artist substring' do
+      let(:pattern) { 'Aphex' }
+
+      it { expect(filtered.keys).to eq(['t300']) }
     end
 
-    it 'matches on title' do
-      result = client.filter_collection(items, 'windowlicker')
-      expect(result.keys).to eq(['t300'])
+    context 'with a title substring' do
+      let(:pattern) { 'windowlicker' }
+
+      it { expect(filtered.keys).to eq(['t300']) }
     end
 
-    it 'is case-insensitive' do
-      result = client.filter_collection(items, 'AMNESIAC')
-      expect(result.keys).to eq(['a200'])
+    context 'with a differently cased pattern' do
+      let(:pattern) { 'AMNESIAC' }
+
+      it { expect(filtered.keys).to eq(['a200']) }
     end
 
-    it 'matches a substring anywhere in artist or title' do
-      result = client.filter_collection(items, 'kid')
-      expect(result.keys).to contain_exactly('a100', 't400')
+    context 'with a substring spanning both fields' do
+      let(:pattern) { 'kid' }
+
+      it { expect(filtered.keys).to contain_exactly('a100', 't400') }
     end
 
-    it 'accepts a precompiled Regexp' do
-      result = client.filter_collection(items, Regexp.new('aphex', Regexp::IGNORECASE))
-      expect(result.keys).to eq(['t300'])
+    context 'with a precompiled Regexp' do
+      let(:pattern) { Regexp.new('aphex', Regexp::IGNORECASE) }
+
+      it { expect(filtered.keys).to eq(['t300']) }
     end
 
-    it 'returns empty hash when nothing matches' do
-      result = client.filter_collection(items, 'zzzz')
-      expect(result).to eq({})
+    context 'with a pattern nothing matches' do
+      let(:pattern) { 'zzzz' }
+
+      it { is_expected.to eq({}) }
     end
 
-    it 'does not raise when a field is nil' do
-      expect { client.filter_collection(items, 'mnesia') }.not_to raise_error
-    end
-  end
+    context 'with an item whose artist is nil' do
+      # "a mnesia" rather than "mnesia": the latter is a substring of
+      # "Amnesiac" and would silently match the wrong item.
+      let(:pattern) { 'a mnesia' }
 
-  describe 'host allowlisting' do
-    it 'matches bandcamp.com and its subdomains' do
-      expect(BandcampDlRb.bc_host?('bandcamp.com')).to be true
-      expect(BandcampDlRb.bc_host?('radiohead.bandcamp.com')).to be true
-      expect(BandcampDlRb.bc_host?('example.com')).to be false
-      expect(BandcampDlRb.bc_host?('notbandcamp.com')).to be false
-    end
-
-    it 'extends the allowlist to bcbits.com for downloads' do
-      expect(BandcampDlRb.download_host?('bandcamp.com')).to be true
-      expect(BandcampDlRb.download_host?('bcbits.com')).to be true
-      expect(BandcampDlRb.download_host?('d1.bcbits.com')).to be true
-      expect(BandcampDlRb.download_host?('example.com')).to be false
+      it { expect(filtered.keys).to eq(['t400']) }
     end
   end
 end

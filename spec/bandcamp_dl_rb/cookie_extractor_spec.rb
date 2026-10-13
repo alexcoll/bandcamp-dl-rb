@@ -3,203 +3,244 @@
 require_relative '../spec_helper'
 
 RSpec.describe BandcampDlRb::CookieExtractor::CookiesFile do
+  include_context 'with a cookie file'
+
   describe '.load_from' do
-    it 'parses a Netscape cookies.txt file and returns the identity cookie value' do
-      content = <<~TXT
-        # Netscape HTTP Cookie File
-        .bandcamp.com	TRUE	/	TRUE	2000000000	identity	abc123XYZ
-        .bandcamp.com	TRUE	/	FALSE	2000000000	other	ignoreme
-      TXT
-      file = Tempfile.new('cookies')
-      file.write(content)
-      file.close
+    subject(:identity) { described_class.load_from(cookie_file.path) }
 
-      expect(described_class.load_from(file.path)).to eq('abc123XYZ')
-    ensure
-      file.unlink
+    context 'with an identity cookie' do
+      let(:cookie_lines) { [BandcampFixtures.cookie_line('identity', 'abc123XYZ')] }
+
+      it 'returns the cookie value' do
+        expect(identity).to eq('abc123XYZ')
+      end
     end
 
-    it 'returns nil when there is no identity cookie' do
-      content = <<~TXT
-        .bandcamp.com	TRUE	/	TRUE	2000000000	session	x
-      TXT
-      file = Tempfile.new('cookies')
-      file.write(content)
-      file.close
+    context 'with other cookies alongside' do
+      let(:cookie_lines) do
+        [
+          BandcampFixtures.cookie_line('identity', 'abc123XYZ'),
+          BandcampFixtures.cookie_line('other', 'ignoreme')
+        ]
+      end
 
-      expect(described_class.load_from(file.path)).to be_nil
-    ensure
-      file.unlink
+      it 'still finds the identity cookie' do
+        expect(identity).to eq('abc123XYZ')
+      end
     end
 
-    it 'returns nil when the file is empty' do
-      file = Tempfile.new('cookies')
-      file.close
+    context 'with comments and blank lines' do
+      let(:cookie_lines) do
+        ['# Netscape HTTP Cookie File', '', BandcampFixtures.cookie_line('identity', 'val42')]
+      end
 
-      expect(described_class.load_from(file.path)).to be_nil
-    ensure
-      file.unlink
+      it 'skips them' do
+        expect(identity).to eq('val42')
+      end
     end
 
-    it 'ignores comment lines and blank lines' do
-      content = <<~TXT
-        # comment line
+    context 'without an identity cookie' do
+      let(:cookie_lines) { [BandcampFixtures.cookie_line('session', 'x')] }
 
-        .bandcamp.com	TRUE	/	TRUE	2000000000	identity	val42
-      TXT
-      file = Tempfile.new('cookies')
-      file.write(content)
-      file.close
+      it { is_expected.to be_nil }
+    end
 
-      expect(described_class.load_from(file.path)).to eq('val42')
-    ensure
-      file.unlink
+    context 'with an identity cookie on another host' do
+      let(:cookie_lines) { [BandcampFixtures.cookie_line('identity', 'other-site', host: '.example.com')] }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'with an empty file' do
+      let(:cookie_lines) { [] }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when the file does not exist' do
+      subject(:identity) { described_class.load_from('/nonexistent/cookies.txt') }
+
+      it { is_expected.to be_nil }
     end
   end
 end
 
 RSpec.describe BandcampDlRb::CookieExtractor::TempCopy do
   describe '.create' do
-    it 'writes a 0600 copy inside a 0700 temp dir' do
-      src = File.join(Dir.tmpdir, "temp_copy_src_#{Process.pid}.sqlite")
-      File.binwrite(src, "\x00cookie db")
-      dir = described_class.create(src, 'bc_temp_copy_')
+    subject(:copy_dir) { described_class.create(src, 'bc_temp_copy_') }
 
-      file = File.join(dir, described_class::FILE_NAME)
-      expect(File.stat(dir).mode & 0o777).to eq(0o700)
-      expect(File.stat(file).mode & 0o777).to eq(0o600)
-      expect(File.binread(file)).to eq("\x00cookie db")
-    ensure
-      described_class.cleanup(dir) if dir
-      FileUtils.rm_f(src) if src && File.exist?(src)
+    let(:src) { File.join(Dir.tmpdir, "temp_copy_src_#{Process.pid}.sqlite") }
+
+    before { File.binwrite(src, "\x00cookie db") }
+
+    after { FileUtils.rm_f(src) }
+
+    it 'copies the bytes' do
+      expect(File.binread(File.join(copy_dir, described_class::FILE_NAME))).to eq("\x00cookie db")
     end
 
-    it 'creates the copy in Dir.tmpdir with the given prefix' do
-      src = File.join(Dir.tmpdir, "temp_copy_src2_#{Process.pid}.sqlite")
-      File.binwrite(src, 'data')
-      dir = described_class.create(src, 'bc_temp_copy_')
-
-      expect(File.dirname(dir)).to eq(Dir.tmpdir)
-      expect(File.basename(dir)).to start_with('bc_temp_copy_')
-    ensure
-      described_class.cleanup(dir) if dir
-      FileUtils.rm_f(src) if src && File.exist?(src)
+    it 'locks the dir to 0700' do
+      expect(File.stat(copy_dir).mode & 0o777).to eq(0o700)
     end
+
+    it 'locks the copy to 0600' do
+      expect(File.stat(File.join(copy_dir, described_class::FILE_NAME)).mode & 0o777).to eq(0o600)
+    end
+
+    it 'uses the given prefix under Dir.tmpdir' do
+      expect(File.basename(copy_dir)).to start_with('bc_temp_copy_')
+    end
+
+    after { described_class.cleanup(copy_dir) }
   end
 
   describe '.cleanup' do
-    it 'removes the temp dir and its copy' do
-      src = File.join(Dir.tmpdir, "temp_copy_src3_#{Process.pid}.sqlite")
-      File.binwrite(src, 'data')
-      dir = described_class.create(src, 'bc_temp_copy_')
+    subject(:removed) { described_class.cleanup(dir) }
 
-      described_class.cleanup(dir)
+    let(:dir) { described_class.create(src, 'bc_temp_copy_') }
+    let(:src) { File.join(Dir.tmpdir, "temp_copy_src3_#{Process.pid}.sqlite") }
 
-      expect(Dir.exist?(dir)).to be(false)
+    before { File.binwrite(src, 'data') }
+
+    after { FileUtils.rm_f(src) }
+
+    it 'removes the directory' do
+      removed
+      expect(Dir.exist?(dir)).to be false
+    end
+
+    it 'leaves no bc temp dir behind' do
+      removed
       expect(Dir.glob(File.join(Dir.tmpdir, 'bc_temp_copy_*'))).to be_empty
-    ensure
-      FileUtils.rm_f(src) if src && File.exist?(src)
     end
   end
 end
 
 RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
-  describe '.profile_dir' do
-    after { stub_const('RUBY_PLATFORM', RUBY_PLATFORM) }
+  include_context 'with a temporary directory'
 
-    it 'uses the macOS Application Support path on darwin' do
-      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
-      allow(Dir).to receive(:home).and_return('/Users/test')
-      expect(described_class.profile_dir)
-        .to eq('/Users/test/Library/Application Support/Firefox/Profiles')
+  describe '.profile_dir' do
+    subject(:profile_root) { described_class.profile_dir }
+
+    context 'when running on macOS' do
+      before do
+        stub_const('RUBY_PLATFORM', 'arm64-darwin23')
+        allow(Dir).to receive(:home).and_return('/Users/test')
+      end
+
+      it { expect(profile_root).to eq('/Users/test/Library/Application Support/Firefox/Profiles') }
     end
 
-    it 'uses ~/.mozilla/firefox on Linux and other platforms' do
-      stub_const('RUBY_PLATFORM', 'x86_64-linux')
-      allow(Dir).to receive(:home).and_return('/home/test')
-      expect(described_class.profile_dir).to eq('/home/test/.mozilla/firefox')
+    context 'when running on Linux' do
+      before do
+        stub_const('RUBY_PLATFORM', 'x86_64-linux')
+        allow(Dir).to receive(:home).and_return('/home/test')
+      end
+
+      it { expect(profile_root).to eq('/home/test/.mozilla/firefox') }
     end
   end
 
   describe '.find' do
-    let(:profile_dir) { File.join(Dir.tmpdir, "ff_profiles_#{Process.pid}") }
+    subject(:identity) { described_class.find(dest) }
 
-    def build_firefox_profile(profile_dir, profile_name)
-      profile = File.join(profile_dir, profile_name)
+    # A real cookies.sqlite, not a double: the extractor opens the file with
+    # sqlite3 and copies it first, so a stubbed DB would not exercise the code
+    # that actually runs on a user's machine.
+    def build_profile(name)
+      profile = File.join(dest, name)
       FileUtils.mkdir_p(profile)
       db = SQLite3::Database.new(File.join(profile, described_class::COOKIE_DB))
-      db.execute_batch <<~SQL
-        CREATE TABLE moz_cookies (
-          name TEXT, value TEXT, host TEXT
-        );
-      SQL
+      db.execute_batch 'CREATE TABLE moz_cookies (name TEXT, value TEXT, host TEXT);'
       db
     end
 
-    def insert_cookie(db, name:, value:, host:)
-      db.execute('INSERT INTO moz_cookies (name, value, host) VALUES (?, ?, ?)',
-                 [name, value, host])
+    def add_cookie(db, name:, value:, host: '.bandcamp.com')
+      db.execute('INSERT INTO moz_cookies (name, value, host) VALUES (?, ?, ?)', [name, value, host])
     end
 
-    after { FileUtils.rm_rf(profile_dir) if profile_dir && Dir.exist?(profile_dir) }
+    context 'with a profile holding the cookie' do
+      it 'returns the value' do
+        db = build_profile('abc.default-release')
+        add_cookie(db, name: 'identity', value: 'FF-VALUE-123')
+        db.close
 
-    it 'returns the identity cookie value from a profile cookies.sqlite' do
-      db = build_firefox_profile(profile_dir, 'abc.default-release')
-      insert_cookie(db, name: 'identity', value: 'FF-VALUE-123', host: '.bandcamp.com')
-      db.close
-
-      expect(described_class.find(profile_dir)).to eq('FF-VALUE-123')
+        expect(identity).to eq('FF-VALUE-123')
+      end
     end
 
-    it 'searches multiple profiles and uses the first one with an identity cookie' do
-      first = build_firefox_profile(profile_dir, 'one.default')
-      insert_cookie(first, name: 'session', value: 'x', host: '.example.com')
-      first.close
+    context 'with several profiles' do
+      it 'uses the first one holding a cookie' do
+        first = build_profile('one.default')
+        add_cookie(first, name: 'session', value: 'x', host: '.example.com')
+        first.close
 
-      second = build_firefox_profile(profile_dir, 'two.default-release')
-      insert_cookie(second, name: 'identity', value: 'FF-VALUE-456', host: '.bandcamp.com')
-      second.close
+        second = build_profile('two.default-release')
+        add_cookie(second, name: 'identity', value: 'FF-VALUE-456')
+        second.close
 
-      expect(described_class.find(profile_dir)).to eq('FF-VALUE-456')
+        expect(identity).to eq('FF-VALUE-456')
+      end
     end
 
-    it 'ignores identity cookies on hosts other than bandcamp.com' do
-      db = build_firefox_profile(profile_dir, 'abc.default-release')
-      insert_cookie(db, name: 'identity', value: 'OTHER-SITE', host: '.example.com')
-      db.close
+    context 'with the cookie on another host' do
+      it 'ignores it' do
+        db = build_profile('abc.default-release')
+        add_cookie(db, name: 'identity', value: 'OTHER-SITE', host: '.example.com')
+        db.close
 
-      expect(described_class.find(profile_dir)).to be_nil
+        expect(identity).to be_nil
+      end
     end
 
-    it 'returns nil when no profile has an identity cookie' do
-      FileUtils.mkdir_p(profile_dir)
-      expect(described_class.find(profile_dir)).to be_nil
+    context 'with no profiles at all' do
+      it { is_expected.to be_nil }
     end
 
-    it 'removes its private temp copy after a successful find' do
-      db = build_firefox_profile(profile_dir, 'abc.default-release')
-      insert_cookie(db, name: 'identity', value: 'FF-VALUE-123', host: '.bandcamp.com')
-      db.close
+    context 'with an unreadable profile' do
+      it 'skips it and returns nil' do
+        broken = File.join(dest, 'broken.default')
+        FileUtils.mkdir_p(broken)
+        File.binwrite(File.join(broken, described_class::COOKIE_DB), 'not a sqlite db')
 
-      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
-      described_class.find(profile_dir)
-      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+        expect(identity).to be_nil
+      end
     end
 
-    it 'removes its private temp copy after an error' do
-      broken_profile = File.join(profile_dir, 'broken.default')
-      FileUtils.mkdir_p(broken_profile)
-      File.binwrite(File.join(broken_profile, described_class::COOKIE_DB), 'not a sqlite db')
+    context 'with a profile holding the cookie' do
+      it 'removes its private temp copy' do
+        db = build_profile('abc.default-release')
+        add_cookie(db, name: 'identity', value: 'FF-VALUE-123')
+        db.close
+        stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
 
-      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
-      expect(described_class.find(profile_dir)).to be_nil
-      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+        identity
+
+        expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+      end
+    end
+
+    context 'with an unreadable profile' do
+      it 'removes its private temp copy' do
+        broken = File.join(dest, 'broken.default')
+        FileUtils.mkdir_p(broken)
+        File.binwrite(File.join(broken, described_class::COOKIE_DB), 'not a sqlite db')
+        stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
+
+        identity
+
+        expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+      end
     end
   end
 end
 
 RSpec.describe BandcampDlRb::CookieExtractor::Safari do
-  # Builds a minimal but byte-correct Cookies.binarycookies payload.
+  include_context 'with a temporary directory'
+
+  # Builds a minimal but byte-correct Cookies.binarycookies payload. Safari
+  # stores its cookies in this bespoke format, so the parser is only worth
+  # testing against real bytes rather than a stand-in.
   def build_cookie(url, name, value)
     parts = [cstring(url), cstring(name), cstring('/'), cstring(value)]
     offsets = string_offsets(parts)
@@ -227,12 +268,12 @@ RSpec.describe BandcampDlRb::CookieExtractor::Safari do
     str.b + "\x00".b
   end
 
-  def build_file(cookies, page_offset: 12)
+  def build_file(cookies)
     page = "\x00\x00\x01\x00".b + [cookies.length].pack('V')
     page += cookie_offsets(cookies).map { |o| [o].pack('V') }.join
     page += cookies.join
 
-    'cook'.b + [1].pack('N') + [page_offset].pack('N') + page
+    'cook'.b + [1].pack('N') + [12].pack('N') + page
   end
 
   def cookie_offsets(cookies)
@@ -245,113 +286,232 @@ RSpec.describe BandcampDlRb::CookieExtractor::Safari do
   end
 
   describe '.cookies_path' do
-    after { allow(Dir).to receive(:home).and_return(Dir.home) }
+    subject(:path) { described_class.cookies_path }
 
-    it 'prefers the sandboxed container path when it exists (macOS Monterey+)' do
+    let(:modern) { '/Users/test/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies' }
+    let(:legacy) { '/Users/test/Library/Cookies/Cookies.binarycookies' }
+
+    before do
       allow(Dir).to receive(:home).and_return('/Users/test')
-      modern = '/Users/test/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies'
-      legacy = '/Users/test/Library/Cookies/Cookies.binarycookies'
       allow(File).to receive(:exist?).and_call_original
-      allow(File).to receive(:exist?).with(modern).and_return(true)
-      allow(File).to receive(:exist?).with(legacy).and_return(false)
-      expect(described_class.cookies_path).to eq(modern)
     end
 
-    it 'falls back to the legacy Library/Cookies path otherwise' do
-      allow(Dir).to receive(:home).and_return('/Users/test')
-      modern = '/Users/test/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies'
-      legacy = '/Users/test/Library/Cookies/Cookies.binarycookies'
-      allow(File).to receive(:exist?).and_call_original
-      allow(File).to receive(:exist?).with(modern).and_return(false)
-      allow(File).to receive(:exist?).with(legacy).and_return(false)
-      expect(described_class.cookies_path).to eq(legacy)
+    context 'with the sandbox container present' do
+      before do
+        allow(File).to receive(:exist?).with(modern).and_return(true)
+        allow(File).to receive(:exist?).with(legacy).and_return(false)
+      end
+
+      it 'prefers the container path' do
+        expect(path).to eq(modern)
+      end
+    end
+
+    context 'with neither path present' do
+      before do
+        allow(File).to receive(:exist?).with(modern).and_return(false)
+        allow(File).to receive(:exist?).with(legacy).and_return(false)
+      end
+
+      it 'falls back to the legacy path' do
+        expect(path).to eq(legacy)
+      end
     end
   end
 
   describe '.find' do
-    it 'reads the identity cookie from a Cookies.binarycookies file' do
-      file = File.join(Dir.tmpdir, "safari_#{Process.pid}.binarycookies")
-      File.write(file, build_file([build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')]))
+    subject(:identity) { described_class.find(path) }
 
-      expect(described_class.find(file)).to eq('SAFARI-IDENTITY')
-    ensure
-      FileUtils.rm_f(file)
+    context 'with an identity cookie in the file' do
+      let(:path) { File.join(dest, 'Cookies.binarycookies') }
+
+      before { File.binwrite(path, build_file([build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')])) }
+
+      it { is_expected.to eq('SAFARI-IDENTITY') }
     end
 
-    it 'returns nil when the file does not exist' do
-      expect(described_class.find('/nonexistent/binarycookies')).to be_nil
+    context 'with no identity cookie in the file' do
+      let(:path) { File.join(dest, 'Cookies.binarycookies') }
+
+      before { File.binwrite(path, build_file([build_cookie('https://example.com', 'session', 'nope')])) }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'returns nil when no identity cookie is present' do
-      file = File.join(Dir.tmpdir, "safari_empty_#{Process.pid}.binarycookies")
-      File.write(file, build_file([build_cookie('https://example.com', 'session', 'nope')]))
+    context 'when the file does not exist' do
+      let(:path) { '/nonexistent/Cookies.binarycookies' }
 
-      expect(described_class.find(file)).to be_nil
-    ensure
-      FileUtils.rm_f(file)
+      it { is_expected.to be_nil }
+    end
+
+    context 'when the file cannot be read' do
+      let(:path) { File.join(dest, 'Cookies.binarycookies') }
+
+      before do
+        File.binwrite(path, 'unused')
+        allow(File).to receive(:binread).and_call_original
+        allow(File).to receive(:binread).with(path).and_raise(StandardError, 'permission denied')
+      end
+
+      it { is_expected.to be_nil }
     end
   end
 
   describe '#parse' do
-    it 'returns the identity cookie value for a bandcamp.com identity cookie' do
-      data = build_file([build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')])
-      expect(described_class.new.parse(data)).to eq('SAFARI-IDENTITY')
+    subject(:identity) { described_class.new(path).parse(data) }
+
+    let(:path) { File.join(dest, 'Cookies.binarycookies') }
+
+    context 'with a bandcamp identity cookie' do
+      let(:data) { build_file([build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')]) }
+
+      it { is_expected.to eq('SAFARI-IDENTITY') }
     end
 
-    it 'skips cookies that do not target bandcamp.com' do
-      data = build_file([build_cookie('https://other.example', 'identity', 'UNUSED')])
-      expect(described_class.new.parse(data)).to be_nil
+    context 'with an identity cookie on another host' do
+      let(:data) { build_file([build_cookie('https://other.example', 'identity', 'UNUSED')]) }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'skips cookies that are not named identity' do
-      data = build_file([build_cookie('https://bandcamp.com', 'session', 'UNUSED')])
-      expect(described_class.new.parse(data)).to be_nil
+    context 'with a bandcamp cookie that is not the identity cookie' do
+      let(:data) { build_file([build_cookie('https://bandcamp.com', 'session', 'UNUSED')]) }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'skips cookies before later finds the identity cookie' do
-      data = build_file([
-                          build_cookie('https://bandcamp.com', 'other', 'UNUSED'),
-                          build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')
-                        ])
-      expect(described_class.new.parse(data)).to eq('SAFARI-IDENTITY')
+    context 'with the identity cookie behind another cookie' do
+      let(:data) do
+        build_file([
+                     build_cookie('https://bandcamp.com', 'other', 'UNUSED'),
+                     build_cookie('https://bandcamp.com', 'identity', 'SAFARI-IDENTITY')
+                   ])
+      end
+
+      it { is_expected.to eq('SAFARI-IDENTITY') }
     end
 
-    it 'returns nil for malformed data' do
-      expect(described_class.new.parse('not a cookie file at all')).to be_nil
+    context 'with malformed bytes' do
+      let(:data) { 'not a cookie file at all' }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'returns nil for a nil payload' do
-      expect(described_class.new.parse(nil)).to be_nil
+    context 'with a nil payload' do
+      let(:data) { nil }
+
+      it { is_expected.to be_nil }
     end
   end
 end
 
 RSpec.describe BandcampDlRb::CookieExtractor do
+  include_context 'with a temporary directory'
+
   describe '.get_identity_cookie' do
-    it 'reads the raw identity cookie value from --cookie-file' do
-      expect(described_class.get_identity_cookie('auto', 'my-raw-cookie')).to eq('my-raw-cookie')
+    subject(:identity) { described_class.get_identity_cookie(browser, cookie_file) }
+
+    let(:browser) { 'auto' }
+    let(:cookie_file) { nil }
+
+    context 'with a raw cookie value' do
+      let(:cookie_file) { 'my-raw-cookie' }
+
+      it 'uses it verbatim' do
+        expect(identity).to eq('my-raw-cookie')
+      end
     end
 
-    it 'reads the cookie from Firefox when browser is set to firefox' do
-      allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return('ff-cookie')
-      expect(described_class.get_identity_cookie('firefox')).to eq('ff-cookie')
+    context 'with a cookies.txt file' do
+      let(:cookie_file) { File.join(dest, 'cookies.txt') }
+      let(:lines) { [BandcampFixtures.cookie_line('identity', 'file-cookie-value')] }
+
+      before { File.write(cookie_file, "#{lines.join("\n")}\n") }
+
+      it 'reads the identity cookie' do
+        expect(identity).to eq('file-cookie-value')
+      end
     end
 
-    it 'reads the cookie from Safari when browser is set to safari' do
-      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return('safari-cookie')
-      expect(described_class.get_identity_cookie('safari')).to eq('safari-cookie')
+    context 'with a cookies.txt file holding no identity cookie' do
+      let(:cookie_file) { File.join(dest, 'cookies.txt') }
+
+      before { File.write(cookie_file, "#{BandcampFixtures.cookie_line('session', 'v')}\n") }
+
+      it 'answers nil' do
+        expect(identity).to be_nil
+      end
     end
 
-    it 'tries Firefox then Safari in auto mode' do
-      allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return(nil)
-      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return('safari-cookie')
-      expect(described_class.get_identity_cookie('auto')).to eq('safari-cookie')
+    context 'with a cookie file that does not exist' do
+      let(:cookie_file) { '/nonexistent/cookies.txt' }
+
+      it 'answers nil' do
+        expect(identity).to be_nil
+      end
     end
 
-    it 'returns nil when no cookie source succeeds' do
-      allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return(nil)
-      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return(nil)
-      expect(described_class.get_identity_cookie('auto')).to be_nil
+    context 'with browser set to firefox' do
+      let(:browser) { 'firefox' }
+
+      it 'reads the cookie from firefox' do
+        allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return('ff-cookie')
+        expect(identity).to eq('ff-cookie')
+      end
+    end
+
+    context 'with browser set to safari' do
+      let(:browser) { 'safari' }
+
+      it 'reads the cookie from safari' do
+        allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return('safari-cookie')
+        expect(identity).to eq('safari-cookie')
+      end
+    end
+
+    context 'with an unrecognised browser' do
+      let(:browser) { 'netscape' }
+
+      it 'answers nil rather than searching' do
+        expect(identity).to be_nil
+      end
+    end
+
+    context 'with browser set to auto' do
+      before do
+        allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return(firefox_cookie)
+        allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return(safari_cookie)
+      end
+
+      let(:firefox_cookie) { nil }
+      let(:safari_cookie) { nil }
+
+      context 'when Firefox has the cookie' do
+        let(:firefox_cookie) { 'ff-cookie' }
+
+        it 'takes the Firefox cookie' do
+          expect(identity).to eq('ff-cookie')
+        end
+
+        it 'does not ask Safari' do
+          identity
+          expect(BandcampDlRb::CookieExtractor::Safari).not_to have_received(:find)
+        end
+      end
+
+      context 'when only Safari has the cookie' do
+        let(:safari_cookie) { 'safari-cookie' }
+
+        it 'falls through to the Safari cookie' do
+          expect(identity).to eq('safari-cookie')
+        end
+      end
+
+      context 'when neither browser has the cookie' do
+        it 'answers nil' do
+          expect(identity).to be_nil
+        end
+      end
     end
   end
 end
