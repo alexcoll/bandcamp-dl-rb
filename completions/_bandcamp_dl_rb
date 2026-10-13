@@ -14,11 +14,13 @@ _bandcamp_dl_rb() {
     '--since[Only download items purchased on/after DATE]:date' \
     '--until[Only download items purchased before DATE]:date' \
     '--force[Re-download even if album already exists]' \
+    '--no-unzip[Save album downloads as ZIPs without extracting track files]' \
     '--dry-run[Show what would be downloaded without downloading]' \
     '--url[Download a specific album/track by URL]:url' \
     {-j,--jobs}'[Download N albums in parallel (1-16)]:jobs' \
     '--page-size[Request N collection items per page (1-500)]:page size' \
     '--entry-encoding[Source encoding for non-UTF-8 zip entry names]:encoding' \
+    '--temp-dir[Directory for temporary download files]:directory:_files -/' \
     '--items[Download specific items by ID]:ids' \
     '--filter[Download only items matching REGEX]:regex' \
     {-v,--verbose}'[Verbose output]' \
