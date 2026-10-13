@@ -217,6 +217,8 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--no-unzip`                 | Save album downloads as ZIPs without extracting track files      |
 | `--entry-encoding ENC`       | Source encoding for non-UTF-8 zip entry names (default: CP932, then CP437) |
 | `--temp-dir PATH`            | Directory for temporary download files (default: system temp). Use a RAM-backed mount (e.g. `/dev/shm`) to keep downloads off a slow disk |
+| `--state-file PATH`          | Path to the sync state file (default: `<library>/.bandcamp-sync.json`). Parent directory is created if missing |
+| `--no-state-file`            | Do not write a sync state file at all |
 | `--dry-run`                  | List what would be downloaded without downloading                |
 | `-V, --version`              | Show the version and exit                                        |
 | `-v, --verbose`              | Verbose output                                                   |
@@ -352,8 +354,21 @@ If nothing is available, the album is reported as *Unavailable* and skipped.
 ## Re-runs & state
 
 The script writes `.bandcamp-sync.json` into your library directory after each
-run. On subsequent runs it uses this to skip albums that are already present.
-New purchases are detected and downloaded on the next run.
+run, recording the sync timestamp, username, and the item IDs it saw. New
+purchases are detected and downloaded on the next run.
+
+To keep that file out of your library — useful when the library is a scanned or
+synced mount — point it elsewhere:
+
+```bash
+bandcamp_dl_rb --library ~/Music/Bandcamp --state-file ~/.cache/bandcamp-sync.json yourname
+```
+
+The argument is a literal file path, and its parent directory is created if it
+doesn't exist. `--no-state-file` skips writing it entirely.
+
+Note that already-downloaded albums are skipped based on the files present in
+the library, not by reading this file:
 
 - A file that looks like `Radiohead/Kid A/01 Everything In Its Right Place.flac`
   exists in the library → skipped (unless `--force`).

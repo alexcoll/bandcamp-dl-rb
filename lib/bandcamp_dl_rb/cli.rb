@@ -46,6 +46,7 @@ module BandcampDlRb
         unzip: true,
         entry_encoding: nil,
         temp_dir: nil,
+        state_file: nil,
         dry_run: false,
         username: nil,
         urls: [],
@@ -309,6 +310,13 @@ module BandcampDlRb
                 'Use a RAM-backed mount (e.g. /dev/shm) on high-RAM machines') do |v|
           options[:temp_dir] = v
         end
+        opts.on('--state-file PATH',
+                'Path for the sync state file (default: <library>/.bandcamp-sync.json)') do |v|
+          options[:state_file] = v
+        end
+        opts.on('--no-state-file', 'Do not write a sync state file') do
+          options[:state_file] = false
+        end
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
         opts.on('--url URL', 'Download a specific album/track by Bandcamp URL (repeatable)') { |v| options[:urls] << v }
         opts.on('-j', '--jobs N', Integer,
@@ -432,8 +440,24 @@ module BandcampDlRb
       "#{item['band_name'] || 'Unknown Artist'} - #{item['item_title'] || 'Unknown Album'}"
     end
 
+    # nil means "use the default under the library root", false means the user
+    # opted out with --no-state-file. Only the explicit false disables the write,
+    # so the default still falls through.
+    def state_file_disabled?(options)
+      options[:state_file] == false
+    end
+
+    def state_file_path(options)
+      options[:state_file] || File.join(options[:library], '.bandcamp-sync.json')
+    end
+
     def write_state_file(items, options)
-      state_file = File.join(options[:library], '.bandcamp-sync.json')
+      return if state_file_disabled?(options)
+
+      state_file = state_file_path(options)
+      # The library root is created in #run, but an explicit --state-file may
+      # point somewhere else whose parent does not exist yet.
+      FileUtils.mkdir_p(File.dirname(state_file))
       state = {
         'last_sync' => Time.now.iso8601,
         'username' => options[:username],

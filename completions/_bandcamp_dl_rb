@@ -21,6 +21,8 @@ _bandcamp_dl_rb() {
     '--page-size[Request N collection items per page (1-500)]:page size' \
     '--entry-encoding[Source encoding for non-UTF-8 zip entry names]:encoding' \
     '--temp-dir[Directory for temporary download files]:directory:_files -/' \
+    '--state-file[Path for the sync state file]:file:_files' \
+    '--no-state-file[Do not write a sync state file]' \
     '--items[Download specific items by ID]:ids' \
     '--filter[Download only items matching REGEX]:regex' \
     {-v,--verbose}'[Verbose output]' \

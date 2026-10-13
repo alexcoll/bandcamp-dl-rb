@@ -15,6 +15,8 @@ complete -c bandcamp_dl_rb -s j -l jobs -d 'Download up to N albums in parallel 
 complete -c bandcamp_dl_rb -l page-size -d 'Request N collection items per page (1-500)' -x -a '100 200 500'
 complete -c bandcamp_dl_rb -l entry-encoding -d 'Source encoding for non-UTF-8 zip entry names' -x -a 'CP932 CP437'
 complete -c bandcamp_dl_rb -l temp-dir -d 'Directory for temporary download files' -r -F
+complete -c bandcamp_dl_rb -l state-file -d 'Path for the sync state file' -r -F
+complete -c bandcamp_dl_rb -l no-state-file -d 'Do not write a sync state file'
 complete -c bandcamp_dl_rb -l items -d 'Download specific collection items by ID' -r
 complete -c bandcamp_dl_rb -l filter -d 'Download only items matching a regex' -r
 complete -c bandcamp_dl_rb -s v -l verbose -d 'Verbose output'
