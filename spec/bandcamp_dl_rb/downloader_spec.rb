@@ -72,7 +72,7 @@ RSpec.describe BandcampDlRb::Downloader do
   # Baseline for the "leaves no bc temp dir behind" examples. let! snapshots
   # this before each example runs, so the comparison is against the machine's
   # starting state rather than an assumption that it began clean.
-  let!(:bc_temp_dirs_before) { Dir.glob(File.join(Dir.tmpdir, 'bc*')) }
+  let!(:bc_temp_dirs_before) { Dir.glob(File.join(described_class.default_temp_base, 'bc*')) }
 
   include RawZipFixture
 
@@ -325,7 +325,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
       it 'leaves no bc temp dir behind' do
         outcome
-        expect(Dir.glob(File.join(Dir.tmpdir, 'bc*'))).to eq(bc_temp_dirs_before)
+        expect(Dir.glob(File.join(described_class.default_temp_base, 'bc*'))).to eq(bc_temp_dirs_before)
       end
 
       context 'with unzip disabled' do
@@ -406,7 +406,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
       it 'leaves no bc temp dir behind' do
         outcome
-        expect(Dir.glob(File.join(Dir.tmpdir, 'bc*'))).to eq(bc_temp_dirs_before)
+        expect(Dir.glob(File.join(described_class.default_temp_base, 'bc*'))).to eq(bc_temp_dirs_before)
       end
     end
   end
@@ -421,7 +421,7 @@ RSpec.describe BandcampDlRb::Downloader do
     end
 
     it 'names it with the bc prefix' do
-      expect(temp_dir).to start_with(File.join(Dir.tmpdir, 'bc'))
+      expect(temp_dir).to start_with(File.join(described_class.default_temp_base, 'bc'))
     end
 
     it 'locks it to 0700' do

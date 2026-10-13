@@ -216,7 +216,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--force`                    | Re-download even if the album already exists                     |
 | `--no-unzip`                 | Save album downloads as ZIPs without extracting track files      |
 | `--entry-encoding ENC`       | Source encoding for non-UTF-8 zip entry names (default: CP932, then CP437) |
-| `--temp-dir PATH`            | Directory for temporary download files (default: system temp). Use a RAM-backed mount (e.g. `/dev/shm`) to keep downloads off a slow disk |
+| `--temp-dir PATH`            | Directory for temporary download files (default: a cache dir on disk). Override to place working files on a specific filesystem |
 | `--state-file PATH`          | Path to the sync state file (default: `<library>/.bandcamp-sync.json`). Parent directory is created if missing |
 | `--no-state-file`            | Do not write a sync state file at all |
 | `--dry-run`                  | List what would be downloaded without downloading                |

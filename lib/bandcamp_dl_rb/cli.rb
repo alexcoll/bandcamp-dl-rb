@@ -306,8 +306,8 @@ module BandcampDlRb
           options[:entry_encoding] = v
         end
         opts.on('--temp-dir PATH',
-                'Directory for temporary download files (default: system temp). ' \
-                'Use a RAM-backed mount (e.g. /dev/shm) on high-RAM machines') do |v|
+                'Directory for temporary download files (default: a cache dir on disk). ' \
+                'Override to place working files on a specific filesystem') do |v|
           options[:temp_dir] = v
         end
         opts.on('--state-file PATH',
