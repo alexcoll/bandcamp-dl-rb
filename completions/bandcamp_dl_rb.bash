@@ -4,7 +4,7 @@ _bandcamp_dl_rb() {
 
   local opts="--library --format --browser --cookie-file --include-hidden \
 --since --until --force --no-unzip --dry-run --url --jobs --page-size --entry-encoding --temp-dir --items --filter \
---verbose --help --version"
+--no-progress --verbose --help --version"
   local formats="flac wav aiff-lossless mp3-320 mp3-v0 aac-hi alac vorbis"
   local browsers="firefox safari auto"
 

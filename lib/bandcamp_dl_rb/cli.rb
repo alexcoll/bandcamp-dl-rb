@@ -22,6 +22,7 @@ module BandcampDlRb
       options = parse_args(argv)
       return 1 unless valid_options?(options)
 
+      Progress.current.enabled = options[:progress]
       FileUtils.mkdir_p(options[:library])
       identity = authenticate(options)
       return 1 unless identity
@@ -31,6 +32,11 @@ module BandcampDlRb
       return 1 unless items
 
       finalize(client, options, items)
+    ensure
+      # Wipe the bars before anything else can write past them, so the cursor
+      # never ends up left inside the block. This sits on #run rather than
+      # #finalize so a failure between the two still tidies up after itself.
+      Progress.current.close
     end
 
     def parse_args(argv = ARGV)
@@ -52,7 +58,8 @@ module BandcampDlRb
         items: nil,
         jobs: 1,
         page_size: BandcampDlRb::DEFAULT_PAGE_SIZE,
-        filter: nil
+        filter: nil,
+        progress: true
       }
 
       parser = build_parser(options)
@@ -326,6 +333,7 @@ module BandcampDlRb
         opts.on('--filter REGEX', 'Download only items whose artist or title matches REGEX (requires username)') do |v|
           options[:filter] = v
         end
+        opts.on('--no-progress', 'Do not draw progress bars for downloads') { options[:progress] = false }
         opts.on('-v', '--verbose', 'Verbose output') { BandcampDlRb.verbose = true }
         opts.on('-h', '--help', 'Show this help') do
           @out.puts opts

@@ -62,6 +62,10 @@ RSpec.describe BandcampDlRb::CLI do
         expect(options).to include(unzip: true)
       end
 
+      it 'defaults progress to true' do
+        expect(options).to include(progress: true)
+      end
+
       it 'defaults filter to nil' do
         expect(options).to include(filter: nil)
       end
@@ -95,6 +99,12 @@ RSpec.describe BandcampDlRb::CLI do
       let(:args) { ['--library', '/x', '--no-unzip', 'u'] }
 
       it { is_expected.to include(unzip: false) }
+    end
+
+    context 'with --no-progress' do
+      let(:args) { ['--library', '/x', '--no-progress', 'u'] }
+
+      it { is_expected.to include(progress: false) }
     end
 
     context 'with --since' do
@@ -456,6 +466,60 @@ RSpec.describe BandcampDlRb::CLI do
       it 'reports failure when nothing matches' do
         recording_downloader
         expect(run_cli(['--library', dest, '--items', 'a999', 'testuser'])[:exit_code]).to eq(1)
+      end
+
+      describe 'progress bars' do
+        # The real renderer is kept so log lines still land in the captured
+        # stderr; only the two lifecycle calls are spied on.
+        let(:renderer) { BandcampDlRb::Progress.current }
+        # Building the client is outside the per-item rescue, so raising there
+        # aborts the run the way a crash mid-sync would.
+        let(:failing_run) { -> { run_cli(['--library', dest, '--items', 'a100', 'testuser']) } }
+
+        before do
+          allow(renderer).to receive(:enabled=).and_call_original
+          allow(renderer).to receive(:close).and_call_original
+          allow(BandcampDlRb::Downloader).to receive(:download_album).and_return(:downloaded)
+        end
+
+        it 'enables progress by default' do
+          run_cli(['--library', dest, '--items', 'a100', 'testuser'])
+          expect(renderer).to have_received(:enabled=).with(true)
+        end
+
+        it 'disables progress with --no-progress' do
+          run_cli(['--library', dest, '--no-progress', '--items', 'a100', 'testuser'])
+          expect(renderer).to have_received(:enabled=).with(false)
+        end
+
+        # The bars are drawn on stderr alongside the log, so they must be wiped
+        # before the summary or the cursor is left inside the block.
+        it 'clears the block before the run ends' do
+          run_cli(['--library', dest, '--items', 'a100', 'testuser'])
+          expect(renderer).to have_received(:close)
+        end
+
+        it 'lets the error out' do
+          allow(BandcampDlRb::Client).to receive(:new).and_raise('boom')
+          expect { failing_run.call }.to raise_error('boom')
+        end
+
+        it 'clears the block even so' do
+          allow(BandcampDlRb::Client).to receive(:new).and_raise('boom')
+          swallow_error { failing_run.call }
+          expect(renderer).to have_received(:close)
+        end
+
+        it 'draws nothing when stderr is redirected' do
+          result = run_cli(['--library', dest, '--items', 'a100', 'testuser'])
+          expect(result[:output]).not_to include("\e[")
+        end
+      end
+
+      it 'lists the available ids' do
+        recording_downloader
+        expect(run_cli(['--library', dest, '--items', 'a999', 'testuser'])[:output])
+          .to include('Available item IDs: a100, a200, t300')
       end
     end
 

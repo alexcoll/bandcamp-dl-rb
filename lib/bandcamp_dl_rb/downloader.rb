@@ -10,9 +10,14 @@ module BandcampDlRb
     COVER_CDN = 'https://f4.bcbits.com/img/a%s_10.jpg'
     WRITE_BUFFER_SIZE = 1024 * 1024
 
-    def self.download_file(client, url, dest_path, max_retries: 3)
+    def self.download_file(client, url, dest_path, max_retries: 3, progress: nil)
+      progress ||= Progress::Null.new
       max_retries.times do |attempt|
-        result = stream_download(client, url, dest_path)
+        # A retry restarts the transfer from zero, so the bar must too;
+        # otherwise a second attempt would report a byte count that is the sum
+        # of both attempts and could exceed the total.
+        progress.reset
+        result = stream_download(client, url, dest_path, progress: progress)
 
         return true if result == true
 
@@ -30,20 +35,13 @@ module BandcampDlRb
     # Streams a download to +dest_path+ without buffering the body in memory.
     # Returns +true+ on success, the redirect location when the server replies
     # with a redirect, or +nil+ on failure.
-    def self.stream_download(client, url, dest_path)
+    def self.stream_download(client, url, dest_path, progress: nil)
+      progress ||= Progress::Null.new
       uri = URI.parse(url)
       outcome = nil
       Net::HTTP.start(uri.hostname, uri.port, use_ssl: true, read_timeout: 120) do |http|
-        req = Net::HTTP::Get.new(uri)
-        req['Cookie'] = "identity=#{client.identity}" if BandcampDlRb.download_host?(uri.hostname)
-        req['User-Agent'] = USER_AGENT
-
-        http.request(req) do |resp|
-          outcome = if redirect_to?(resp)
-                      resp['location']
-                    elsif success_response?(resp)
-                      write_stream(resp, dest_path)
-                    end
+        http.request(download_request(client, uri)) do |resp|
+          outcome = download_outcome(resp, dest_path, progress)
         end
       end
       outcome
@@ -52,13 +50,33 @@ module BandcampDlRb
       nil
     end
 
+    def self.download_request(client, uri)
+      req = Net::HTTP::Get.new(uri)
+      req['Cookie'] = "identity=#{client.identity}" if BandcampDlRb.download_host?(uri.hostname)
+      req['User-Agent'] = USER_AGENT
+      req
+    end
+
+    def self.download_outcome(resp, dest_path, progress)
+      return resp['location'] if redirect_to?(resp)
+      return write_stream(resp, dest_path, progress) if success_response?(resp)
+
+      nil
+    end
+
     # Accumulates read_body chunks (Net::HTTP yields ~16KB) and writes them to
     # disk in WRITE_BUFFER_SIZE batches so large downloads don't incur tens of
     # thousands of tiny write syscalls.
-    def self.write_stream(resp, dest_path)
+    #
+    # The progress handle is advanced as each chunk arrives rather than as each
+    # batch is flushed: bytes are buffered before reaching the disk, so
+    # reporting at flush time would make the bar stall for a second at a time
+    # on any transfer faster than the buffer fills.
+    def self.write_stream(resp, dest_path, progress = Progress::Null.new)
       File.open(dest_path, 'wb') do |file|
         buffer = +''
         resp.read_body do |chunk|
+          progress.advance(chunk.bytesize)
           buffer << chunk
           next if buffer.bytesize < WRITE_BUFFER_SIZE
 
@@ -192,7 +210,7 @@ module BandcampDlRb
 
       tmp_dir = temp_dir_for(item, temp_dir: temp_dir, tmp_dir: tmp_dir,
                                    temp_directory: temp_directory, scratch_dir: scratch_dir)
-      tmp_file = download_to_temp(client, dl, tmp_dir)
+      tmp_file = download_to_temp(client, dl, tmp_dir, label: label)
       return :failed unless tmp_file
 
       placed = place_download(tmp_file, album_dir, unzip: unzip, encoding: encoding)
@@ -297,12 +315,13 @@ module BandcampDlRb
       Dir.mktmpdir('bc', base)
     end
 
-    def self.download_to_temp(client, download, tmp_dir)
+    def self.download_to_temp(client, download, tmp_dir, label: nil)
       FileUtils.mkdir_p(tmp_dir)
       ext = BandcampDlRb::FORMAT_MAP[download[:format]] || '.zip'
       tmp_file = File.join(tmp_dir, "download#{ext}")
 
-      unless download_file(client, download[:url], tmp_file)
+      progress = start_progress(label || File.basename(tmp_file), download)
+      unless download_file(client, download[:url], tmp_file, progress: progress)
         BandcampDlRb.log '    Failed to download'
         FileUtils.rm_rf(tmp_dir)
         return nil
@@ -310,6 +329,16 @@ module BandcampDlRb
 
       File.chmod(0o600, tmp_file)
       tmp_file
+    ensure
+      progress&.finish
+    end
+
+    # Bandcamp reports each format's size in the album pagedata, which is
+    # already in hand here, so the bar is determinate without spending a
+    # request to probe the size. When it is absent the bar is indeterminate
+    # rather than guessing.
+    def self.start_progress(label, download)
+      Progress.current.start(label, total: size_bytes(download))
     end
 
     def self.place_download(tmp_file, album_dir, unzip: true, encoding: nil)
