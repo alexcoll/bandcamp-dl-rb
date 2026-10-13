@@ -14,10 +14,14 @@ module BandcampDlRb
   # output stay clean.
   class Progress
     # Seconds between repaints. Net::HTTP yields chunks as small as 16KB, far
-    # more often than a terminal can usefully redraw.
-    REFRESH_INTERVAL = 0.1
-    # Trailing window the throughput estimate is averaged over.
-    RATE_WINDOW = 3.0
+    # more often than a terminal can usefully redraw, and redrawing the whole
+    # block more than a couple of times a second makes it shimmer. Half a
+    # second is still responsive enough to see a transfer progressing.
+    REFRESH_INTERVAL = 0.5
+    # Trailing window the throughput estimate is averaged over. Kept several
+    # repaints long so halving the refresh rate does not leave too few samples
+    # in the window and make the displayed rate jump between steps.
+    RATE_WINDOW = 5.0
     MIN_WIDTH = 20
     DEFAULT_WIDTH = 80
     MIN_BAR_WIDTH = 8
@@ -41,6 +45,7 @@ module BandcampDlRb
       @lock = Mutex.new
       @entries = []
       @painted = 0
+      @drawn = []
     end
 
     # Resolved lazily rather than memoized so a caller that swaps $stderr, as
@@ -79,8 +84,17 @@ module BandcampDlRb
 
       @lock.synchronize do
         entry.add(bytes)
-        paint if entry.ready?(REFRESH_INTERVAL)
+        paint if ready_to_repaint?
       end
+    end
+
+    # One throttle for the whole block, not one per download: with N transfers
+    # in flight a per-entry throttle would repaint N times per interval, and
+    # the block is what the eye sees flicker.
+    def ready_to_repaint?
+      return true if @last_paint.nil?
+
+      Process.clock_gettime(Process::CLOCK_MONOTONIC) - @last_paint >= REFRESH_INTERVAL
     end
 
     # Rewinds a download to zero bytes, for a retry of the same transfer.
@@ -128,6 +142,7 @@ module BandcampDlRb
       @lock.synchronize do
         erase
         @entries.clear
+        @drawn = []
       end
     end
 
@@ -142,6 +157,9 @@ module BandcampDlRb
 
       out.print("\e[#{@painted}A\e[J")
       @painted = 0
+      # The screen no longer holds what was last drawn, so the next repaint has
+      # to actually redraw rather than conclude it has nothing to do.
+      @drawn = []
     end
 
     # Repaints the block from scratch: rewind over the rows drawn last time,
@@ -153,9 +171,15 @@ module BandcampDlRb
       # this repaint is about to draw rather than lagging a frame behind them.
       @entries.each(&:painted!)
       lines = @entries.map { |entry| line_for(entry) }
+      # A repaint that would draw exactly what is already on screen only makes
+      # the block flicker, so skip it.
+      return if lines == @drawn
+
       erase if @painted.positive?
       lines.each { |line| out.print("\r\e[2K#{line}\n") }
       @painted = lines.length
+      @drawn = lines
+      @last_paint = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       out.flush
     end
 

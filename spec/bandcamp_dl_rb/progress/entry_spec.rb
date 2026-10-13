@@ -50,7 +50,7 @@ RSpec.describe BandcampDlRb::Progress::Entry do
 
         10_000.times do
           entry.add(1024)
-          now += 0.1
+          now += BandcampDlRb::Progress::REFRESH_INTERVAL
           entry.painted!
         end
       end

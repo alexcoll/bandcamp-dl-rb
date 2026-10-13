@@ -60,14 +60,6 @@ module BandcampDlRb
         @samples.shift while @samples.size > 2 && @samples.first[0] < now - Progress::RATE_WINDOW
       end
 
-      # True once +interval+ has passed since this entry was last painted, so
-      # the renderer can coalesce a burst of chunk writes into one repaint.
-      def ready?(interval)
-        return true if @painted_at.nil?
-
-        monotonic - @painted_at >= interval
-      end
-
       def rate
         first = @samples.first
         last = @samples.last
