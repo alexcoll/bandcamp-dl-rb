@@ -170,6 +170,17 @@ temporary directory). Point this at a RAM-backed mount such as
 to keep downloads off a slow disk; the directory is created if it does not
 exist.
 .TP
+.B \-\-state-file \fIPATH\fR
+Path to write the sync state file to (default:
+\fI<library>\fP/.bandcamp-sync.json\fR). Use this to keep the state file out of
+the library root, for example when that directory is a scanned or synced mount.
+The argument is taken as a literal file path, and its parent directory is
+created if missing.
+.TP
+.B \-\-no-state-file
+Do not write a sync state file at all. Downloads still proceed; only the state
+file is suppressed.
+.TP
 .B \-\-dry-run
 List what would be downloaded, with item IDs and sizes, without downloading
 anything.
@@ -243,7 +254,10 @@ bandcamp_dl_rb -l ~/Music/Bandcamp --cookie-file /path/to/cookies.txt yourname
 .SH FILES
 .TP
 .I ~/Music/Bandcamp/.bandcamp-sync.json
-State file written after each run; used to skip already-downloaded albums.
+State file written after each run. Records the sync timestamp, username, and
+the set of item IDs seen. Albums are skipped on re-runs based on the files
+already present in the library, not by reading this file. Override the path
+with \fB\-\-state-file\fR, or suppress the file with \fB\-\-no-state-file\fR.
 .SH EXIT STATUS
 .TP
 .B 0
