@@ -2,7 +2,7 @@
 
 require_relative '../spec_helper'
 
-RSpec.describe 'man/bandcamp_dl_rb.1' do
+RSpec.describe 'man/bandcamp_dl_rb.1', :parity do
   subject(:manpage) { source.gsub('\\', '') }
 
   let(:source) { File.read(File.expand_path('../../man/bandcamp_dl_rb.1', __dir__)) }
