@@ -198,8 +198,8 @@ module BandcampDlRb
       [stats, "[#{bar_for(entry, bar_width)}]"]
     end
 
-    # The throughput and ETA live in the tail, so keep them visible even when
-    # an album title is long: truncate the label, never the numbers.
+    # The throughput lives in the tail, so keep it visible even when an album
+    # title is long: truncate the label, never the numbers.
     def stats_for(entry, width)
       tail = tail_for(entry)
       return truncate(entry.label, width) if tail.empty?
@@ -215,8 +215,7 @@ module BandcampDlRb
     end
 
     # Everything after the bar: percentage and byte counts when the size is
-    # known, throughput whenever it can be measured, and an ETA only when both
-    # halves of that are available.
+    # known, throughput whenever it can be measured.
     def tail_for(entry)
       parts = [entry.total ? transfer_summary(entry) : Utils.human_size(entry.current)]
       add_rate(entry, parts)
@@ -235,7 +234,6 @@ module BandcampDlRb
       return unless rate.positive?
 
       parts << "#{Utils.human_size(rate)}/s"
-      parts << "ETA #{format_eta(entry.eta(rate))}" if entry.total
     end
 
     def bar_for(entry, width)
@@ -259,13 +257,6 @@ module BandcampDlRb
       return label if label.length <= budget
 
       "#{label[0, budget - ELLIPSIS.length]}#{ELLIPSIS}"
-    end
-
-    def format_eta(seconds)
-      return '--:--' unless seconds&.finite? && seconds >= 0
-
-      seconds = seconds.round
-      format('%<minutes>d:%<seconds>02d', minutes: seconds / 60, seconds: seconds % 60)
     end
 
     def terminal_width

@@ -234,7 +234,7 @@ RSpec.describe BandcampDlRb::Progress do
 
       it { is_expected.to include('1.0 KB/s') }
 
-      it { is_expected.to include('ETA') }
+      it { is_expected.not_to include('ETA') }
     end
 
     context 'with an unknown total and throughput' do
@@ -308,8 +308,8 @@ RSpec.describe BandcampDlRb::Progress do
 
         before { handle.advance(2048) }
 
-        it 'truncates the numbers row rather than wrapping' do
-          expect(stats).to end_with('...')
+        it 'truncates the label rather than wrapping' do
+          expect(stats).to include('...')
         end
 
         it 'leaves the bar full width' do

@@ -233,10 +233,10 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 ### Progress bars
 
 While downloads run, each in-flight transfer gets its own line showing
-percentage, transferred/total size, throughput, and ETA:
+percentage, transferred/total size, and throughput:
 
 ```
-Boards of Canada - Music Has the... [===============]  57.2% 3.4 MB/6.0 MB 913.7 KB/s ETA 0:03
+Boards of Canada - Music Has the... [===============]  57.2% 3.4 MB/6.0 MB 913.7 KB/s
 Aphex Twin - Selected Ambie...    [        ===      ] 2.3 MB 630.5 KB/s
 ```
 
