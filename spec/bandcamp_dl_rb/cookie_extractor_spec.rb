@@ -205,191 +205,6 @@ RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
   end
 end
 
-RSpec.describe BandcampDlRb::CookieExtractor::Chrome do
-  describe '.local_state_path' do
-    after { stub_const('RUBY_PLATFORM', RUBY_PLATFORM) }
-
-    it 'uses the macOS Application Support path on darwin' do
-      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
-      allow(Dir).to receive(:home).and_return('/Users/test')
-      expect(described_class.local_state_path)
-        .to eq('/Users/test/Library/Application Support/Google/Chrome/Local State')
-    end
-
-    it 'uses LOCALAPPDATA on Windows' do
-      stub_const('RUBY_PLATFORM', 'x64-mingw32')
-      allow(ENV).to receive(:[]).with('LOCALAPPDATA').and_return('C:/Users/Test/AppData/Local')
-      expect(described_class.local_state_path)
-        .to eq('C:/Users/Test/AppData/Local/Google/Chrome/User Data/Local State')
-    end
-
-    it 'uses ~/.config/google-chrome on Linux' do
-      stub_const('RUBY_PLATFORM', 'x86_64-linux')
-      allow(Dir).to receive(:home).and_return('/home/test')
-      expect(described_class.local_state_path)
-        .to eq('/home/test/.config/google-chrome/Local State')
-    end
-
-    it 'uses the Chromium Application Support path on macOS' do
-      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
-      allow(Dir).to receive(:home).and_return('/Users/test')
-      expect(described_class.local_state_path('chromium'))
-        .to eq('/Users/test/Library/Application Support/Chromium/Local State')
-    end
-
-    it 'uses ~/.config/chromium on Linux' do
-      stub_const('RUBY_PLATFORM', 'x86_64-linux')
-      allow(Dir).to receive(:home).and_return('/home/test')
-      expect(described_class.local_state_path('chromium'))
-        .to eq('/home/test/.config/chromium/Local State')
-    end
-  end
-
-  describe '.cookie_db_paths' do
-    after { stub_const('RUBY_PLATFORM', RUBY_PLATFORM) }
-
-    it 'lists the macOS Chrome cookie DBs' do
-      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
-      allow(Dir).to receive(:home).and_return('/Users/test')
-      paths = described_class.cookie_db_paths
-      expect(paths).to include('/Users/test/Library/Application Support/Google/Chrome/Default/Network/Cookies')
-      expect(paths).to include('/Users/test/Library/Application Support/Google/Chrome/Default/Cookies')
-    end
-
-    it 'lists the Windows Chrome cookie DBs under LOCALAPPDATA' do
-      stub_const('RUBY_PLATFORM', 'x64-mingw32')
-      allow(ENV).to receive(:[]).with('LOCALAPPDATA').and_return('C:/Users/Test/AppData/Local')
-      paths = described_class.cookie_db_paths
-      expect(paths).to include('C:/Users/Test/AppData/Local/Google/Chrome/User Data/Default/Network/Cookies')
-    end
-
-    it 'lists the Linux Chrome cookie DBs' do
-      stub_const('RUBY_PLATFORM', 'x86_64-linux')
-      allow(Dir).to receive(:home).and_return('/home/test')
-      paths = described_class.cookie_db_paths
-      expect(paths).to include('/home/test/.config/google-chrome/Default/Network/Cookies')
-    end
-
-    it 'lists the Chromium cookie DBs on macOS' do
-      stub_const('RUBY_PLATFORM', 'arm64-darwin23')
-      allow(Dir).to receive(:home).and_return('/Users/test')
-      paths = described_class.cookie_db_paths('chromium')
-      expect(paths).to include('/Users/test/Library/Application Support/Chromium/Default/Network/Cookies')
-      expect(paths).to include('/Users/test/Library/Application Support/Chromium/Default/Cookies')
-    end
-  end
-
-  describe '.decrypt' do
-    let(:key) { '0123456789abcdef' }
-
-    it 'decrypts a v10-encrypted cookie value' do
-      plaintext = 'identity-cookie-123'
-      cipher = OpenSSL::Cipher.new('aes-128-cbc')
-      cipher.encrypt
-      cipher.key = key
-      cipher.iv = "\x20" * 16
-      encrypted = "v10#{cipher.update(plaintext) + cipher.final}"
-
-      expect(described_class.decrypt(encrypted, key)).to eq(plaintext)
-    end
-
-    it 'returns nil for a value without a v10/v11 prefix' do
-      expect(described_class.decrypt('not-encrypted', key)).to be_nil
-    end
-
-    it 'returns nil when the key or value is missing' do
-      expect(described_class.decrypt(nil, key)).to be_nil
-      expect(described_class.decrypt("v10\x01\x02", nil)).to be_nil
-    end
-  end
-
-  describe '.find' do
-    let(:key) { '0123456789abcdef' }
-
-    it 'reads and decrypts the identity cookie from a Chrome cookie DB' do
-      plaintext = 'CHROME-IDENTITY-456'
-
-      cipher = OpenSSL::Cipher.new('aes-128-cbc')
-      cipher.encrypt
-      cipher.key = key
-      cipher.iv = "\x20" * 16
-      encrypted = "v10#{cipher.update(plaintext) + cipher.final}"
-
-      cookie_db = File.join(Dir.tmpdir, "chrome_cookies_#{Process.pid}.sqlite")
-      db = SQLite3::Database.new(cookie_db)
-      db.execute_batch <<~SQL
-        CREATE TABLE cookies (
-          name TEXT, value TEXT, host_key TEXT, encrypted_value BLOB
-        );
-      SQL
-      db.execute(
-        "INSERT INTO cookies (name, host_key, encrypted_value) VALUES ('identity', '.bandcamp.com', ?)",
-        [encrypted]
-      )
-      db.close
-
-      expect(described_class.find('chrome', cookie_db, key)).to eq(plaintext)
-    ensure
-      FileUtils.rm_f(cookie_db) if cookie_db && File.exist?(cookie_db)
-    end
-
-    it 'returns nil when no identity cookie exists' do
-      empty_db = File.join(Dir.tmpdir, "chrome_empty_#{Process.pid}.sqlite")
-      db = SQLite3::Database.new(empty_db)
-      db.execute_batch <<~SQL
-        CREATE TABLE cookies (
-          name TEXT, value TEXT, host_key TEXT, encrypted_value BLOB
-        );
-      SQL
-      db.close
-
-      expect(described_class.find('chrome', empty_db, key)).to be_nil
-    ensure
-      FileUtils.rm_f(empty_db) if empty_db && File.exist?(empty_db)
-    end
-
-    it 'removes its private temp copy after a successful find' do
-      plaintext = 'CHROME-IDENTITY-789'
-
-      cipher = OpenSSL::Cipher.new('aes-128-cbc')
-      cipher.encrypt
-      cipher.key = key
-      cipher.iv = "\x20" * 16
-      encrypted = "v10#{cipher.update(plaintext) + cipher.final}"
-
-      cookie_db = File.join(Dir.tmpdir, "chrome_temp_cleanup_#{Process.pid}.sqlite")
-      db = SQLite3::Database.new(cookie_db)
-      db.execute_batch <<~SQL
-        CREATE TABLE cookies (
-          name TEXT, value TEXT, host_key TEXT, encrypted_value BLOB
-        );
-      SQL
-      db.execute(
-        "INSERT INTO cookies (name, host_key, encrypted_value) VALUES ('identity', '.bandcamp.com', ?)",
-        [encrypted]
-      )
-      db.close
-
-      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
-      expect(described_class.find('chrome', cookie_db, key)).to eq(plaintext)
-      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
-    ensure
-      FileUtils.rm_f(cookie_db) if cookie_db && File.exist?(cookie_db)
-    end
-
-    it 'removes its private temp copy after an error' do
-      broken_db = File.join(Dir.tmpdir, "chrome_broken_#{Process.pid}.sqlite")
-      File.binwrite(broken_db, 'not a sqlite db')
-
-      stale = Dir.glob(File.join(Dir.tmpdir, 'bc_*'))
-      expect(described_class.find('chrome', broken_db, key)).to be_nil
-      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
-    ensure
-      FileUtils.rm_f(broken_db) if broken_db && File.exist?(broken_db)
-    end
-  end
-end
-
 RSpec.describe BandcampDlRb::CookieExtractor::Safari do
   # Builds a minimal but byte-correct Cookies.binarycookies payload.
   def build_cookie(url, name, value)
@@ -524,16 +339,6 @@ RSpec.describe BandcampDlRb::CookieExtractor do
       expect(described_class.get_identity_cookie('auto', 'my-raw-cookie')).to eq('my-raw-cookie')
     end
 
-    it 'reads the cookie from Chrome when browser is set to chrome' do
-      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).with('chrome').and_return('chrome-cookie')
-      expect(described_class.get_identity_cookie('chrome')).to eq('chrome-cookie')
-    end
-
-    it 'reads the cookie from Chromium when browser is set to chromium' do
-      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).with('chromium').and_return('chromium-cookie')
-      expect(described_class.get_identity_cookie('chromium')).to eq('chromium-cookie')
-    end
-
     it 'reads the cookie from Firefox when browser is set to firefox' do
       allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return('ff-cookie')
       expect(described_class.get_identity_cookie('firefox')).to eq('ff-cookie')
@@ -544,17 +349,15 @@ RSpec.describe BandcampDlRb::CookieExtractor do
       expect(described_class.get_identity_cookie('safari')).to eq('safari-cookie')
     end
 
-    it 'tries Firefox then Safari then Chrome in auto mode' do
+    it 'tries Firefox then Safari in auto mode' do
       allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return(nil)
-      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return(nil)
-      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).and_return('chrome-cookie')
-      expect(described_class.get_identity_cookie('auto')).to eq('chrome-cookie')
+      allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return('safari-cookie')
+      expect(described_class.get_identity_cookie('auto')).to eq('safari-cookie')
     end
 
     it 'returns nil when no cookie source succeeds' do
       allow(BandcampDlRb::CookieExtractor::Firefox).to receive(:find).and_return(nil)
       allow(BandcampDlRb::CookieExtractor::Safari).to receive(:find).and_return(nil)
-      allow(BandcampDlRb::CookieExtractor::Chrome).to receive(:find).and_return(nil)
       expect(described_class.get_identity_cookie('auto')).to be_nil
     end
   end

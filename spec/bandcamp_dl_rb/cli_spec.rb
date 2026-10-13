@@ -31,8 +31,8 @@ RSpec.describe BandcampDlRb::CLI do
     end
 
     it 'parses the browser option' do
-      options = described_class.parse_args(['--library', '/x', '--browser', 'chrome', 'u'])
-      expect(options[:browser]).to eq('chrome')
+      options = described_class.parse_args(['--library', '/x', '--browser', 'firefox', 'u'])
+      expect(options[:browser]).to eq('firefox')
     end
 
     it 'accepts safari as a browser option' do

@@ -3,7 +3,7 @@
 _bandcamp_dl_rb() {
   local -a formats browsers
   formats=(flac wav aiff-lossless mp3-320 mp3-v0 aac-hi alac vorbis)
-  browsers=(firefox chrome chromium safari auto)
+  browsers=(firefox safari auto)
 
   _arguments \
     {-l,--library}'[Plex library root path]:path:_files' \

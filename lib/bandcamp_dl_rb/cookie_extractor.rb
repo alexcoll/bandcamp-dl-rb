@@ -2,13 +2,12 @@
 
 require 'bandcamp_dl_rb/cookie_extractor/temp_copy'
 require 'bandcamp_dl_rb/cookie_extractor/firefox'
-require 'bandcamp_dl_rb/cookie_extractor/chrome'
 require 'bandcamp_dl_rb/cookie_extractor/safari'
 require 'bandcamp_dl_rb/cookie_extractor/cookies_file'
 
 module BandcampDlRb
   # Orchestrates extraction of the Bandcamp `identity` cookie from the user's
-  # browser (Firefox, Safari, or Chrome), a cookies.txt file, or a raw cookie
+  # browser (Firefox or Safari), a cookies.txt file, or a raw cookie
   # value, delegating the source-specific work to collaborator classes.
   class CookieExtractor
     class << self
@@ -36,7 +35,6 @@ module BandcampDlRb
         case browser_mode.downcase
         when 'firefox' then extract_with('Firefox', -> { Firefox.find })
         when 'safari' then extract_with('Safari', -> { Safari.find })
-        when 'chrome', 'chromium' then extract_with(browser_mode, -> { Chrome.find(browser_mode) })
         when 'auto' then extract_auto
         end
       end
@@ -54,11 +52,7 @@ module BandcampDlRb
         return value if value
 
         BandcampDlRb.log 'Trying Safari...'
-        value = Safari.find
-        return value if value
-
-        BandcampDlRb.log 'Trying Chrome...'
-        Chrome.find
+        Safari.find
       end
     end
   end
