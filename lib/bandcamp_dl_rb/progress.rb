@@ -188,13 +188,30 @@ module BandcampDlRb
     # readable.
     def lines_for(entry)
       width = terminal_width
-      stats = truncate("#{entry.label}  #{tail_for(entry)}", width)
+      stats = stats_for(entry, width)
+      stats = truncate(stats, width)
       # Too narrow for a bar worth drawing; the numbers alone still say
       # something, and a wrapped row would corrupt the block beneath it.
       return [stats] if width < LABEL_RESERVE
 
       bar_width = clamp(width - 4, MIN_BAR_WIDTH, width - 4)
       [stats, "[#{bar_for(entry, bar_width)}]"]
+    end
+
+    # The throughput and ETA live in the tail, so keep them visible even when
+    # an album title is long: truncate the label, never the numbers.
+    def stats_for(entry, width)
+      tail = tail_for(entry)
+      return truncate(entry.label, width) if tail.empty?
+
+      label_budget = width - tail.length - 2
+      if label_budget >= ELLIPSIS.length
+        "#{truncate(entry.label, label_budget)}  #{tail}"
+      elsif width >= tail.length
+        tail
+      else
+        truncate(tail, width)
+      end
     end
 
     # Everything after the bar: percentage and byte counts when the size is
