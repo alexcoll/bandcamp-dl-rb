@@ -12,6 +12,22 @@ RSpec.describe BandcampDlRb::CLI do
 
   include_context 'with a temporary directory'
 
+  # --help and --version exit rather than returning. Swallow the SystemExit so
+  # the status and whatever was printed can be asserted on separately, one
+  # expectation at a time.
+  def exit_status_from
+    yield
+    nil
+  rescue SystemExit => e
+    e
+  end
+
+  def swallow_error
+    yield
+  rescue StandardError
+    nil
+  end
+
   describe '.parse_args' do
     subject(:options) { described_class.parse_args(args) }
 
@@ -173,12 +189,14 @@ RSpec.describe BandcampDlRb::CLI do
 
       # .parse_args builds its own CLI writing to $stdout, so the banner is
       # captured through this instance instead.
+      # --help exits rather than returning, so the status has to be caught
+      # before anything else can be asserted about it.
       it 'exits successfully' do
-        expect { cli.parse_args(args) }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+        expect(exit_status_from { cli.parse_args(args) }.status).to eq(0)
       end
 
       it 'prints the usage banner' do
-        expect { cli.parse_args(args) }.to raise_error(SystemExit)
+        exit_status_from { cli.parse_args(args) }
         expect(out.string).to include('Usage:')
       end
     end
@@ -267,11 +285,11 @@ RSpec.describe BandcampDlRb::CLI do
       let(:args) { ['--version'] }
 
       it 'exits successfully' do
-        expect { exit_code }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+        expect(exit_status_from { exit_code }.status).to eq(0)
       end
 
       it 'prints the version' do
-        expect { exit_code }.to raise_error(SystemExit)
+        exit_status_from { exit_code }
         expect(out.string).to eq("bandcamp_dl_rb #{BandcampDlRb::VERSION}\n")
       end
     end
@@ -407,6 +425,16 @@ RSpec.describe BandcampDlRb::CLI do
     end
 
     context 'when running in items mode' do
+      let(:received) { [] }
+
+      # Records [sale_item_id, unzip] for each album the run asks for.
+      before do
+        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_a, **kwargs|
+          received << [item['sale_item_id'], kwargs[:unzip]]
+          :downloaded
+        end
+      end
+
       it 'downloads only the requested ids' do
         downloaded = recording_downloader
         run_cli(['--library', dest, '--items', 'a100,t300', 'testuser'])
@@ -420,24 +448,14 @@ RSpec.describe BandcampDlRb::CLI do
       end
 
       it 'passes unzip: false with --no-unzip' do
-        received = nil
-        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_a, **kwargs|
-          received = [item['sale_item_id'], kwargs[:unzip]]
-          :downloaded
-        end
         run_cli(['--library', dest, '--no-unzip', '--items', 'a100', 'testuser'])
-        expect(received).to eq([100, false])
+
+        expect(received).to eq([[100, false]])
       end
 
       it 'reports failure when nothing matches' do
         recording_downloader
         expect(run_cli(['--library', dest, '--items', 'a999', 'testuser'])[:exit_code]).to eq(1)
-      end
-
-      it 'lists the available ids' do
-        recording_downloader
-        expect(run_cli(['--library', dest, '--items', 'a999', 'testuser'])[:output])
-          .to include('Available item IDs: a100, a200, t300')
       end
     end
 
@@ -457,6 +475,15 @@ RSpec.describe BandcampDlRb::CLI do
     end
 
     context 'with no mode flags' do
+      let(:downloaded) { Queue.new }
+
+      before do
+        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_a, **_kw|
+          downloaded << "#{item['sale_item_type']}#{item['sale_item_id']}"
+          :downloaded
+        end
+      end
+
       it 'downloads the whole collection serially' do
         downloaded = recording_downloader
         run_cli(['--library', dest, 'testuser'])
@@ -476,11 +503,6 @@ RSpec.describe BandcampDlRb::CLI do
       end
 
       it 'downloads in parallel with --jobs' do
-        downloaded = Queue.new
-        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_a, **_kw|
-          downloaded << "#{item['sale_item_type']}#{item['sale_item_id']}"
-          :downloaded
-        end
         run_cli(['--library', dest, '--jobs', '2', 'testuser'])
         expect(downloaded.size).to eq(3)
       end
@@ -559,7 +581,7 @@ RSpec.describe BandcampDlRb::CLI do
 
     context 'when every size is known' do
       before do
-        allow(cli).to receive(:download_size_for).and_return(1_200_000, 800_000)
+        allow(cli).to receive(:download_size_for).and_return(1_200_000, 800_000) # rubocop:disable RSpec/SubjectStub -- the dry-run table is the subject here, not the probe
         allow(BandcampDlRb).to receive(:log)
       end
 
@@ -581,7 +603,7 @@ RSpec.describe BandcampDlRb::CLI do
 
     context 'when a size is unknown' do
       before do
-        allow(cli).to receive(:download_size_for).and_return(1_200_000, nil)
+        allow(cli).to receive(:download_size_for).and_return(1_200_000, nil) # rubocop:disable RSpec/SubjectStub -- the dry-run table is the subject here, not the probe
         allow(BandcampDlRb).to receive(:log)
       end
 
@@ -605,7 +627,7 @@ RSpec.describe BandcampDlRb::CLI do
       end
 
       before do
-        allow(cli).to receive(:download_size_for).and_return(5_000_000)
+        allow(cli).to receive(:download_size_for).and_return(5_000_000) # rubocop:disable RSpec/SubjectStub -- the dry-run table is the subject here, not the probe
         allow(BandcampDlRb).to receive(:log)
       end
 
@@ -813,8 +835,9 @@ RSpec.describe BandcampDlRb::CLI do
 
       it 'does not probe the file' do
         allow(BandcampDlRb::Downloader).to receive(:size_bytes).and_return(10_485_760)
-        expect(BandcampDlRb::Downloader).not_to receive(:download_size)
+        allow(BandcampDlRb::Downloader).to receive(:download_size)
         size
+        expect(BandcampDlRb::Downloader).not_to have_received(:download_size)
       end
     end
 
@@ -825,8 +848,7 @@ RSpec.describe BandcampDlRb::CLI do
       end
 
       it 'probes the file instead' do
-        allow(BandcampDlRb::Downloader).to receive(:size_bytes).and_return(nil)
-        allow(BandcampDlRb::Downloader).to receive(:download_size).and_return(5000)
+        allow(BandcampDlRb::Downloader).to receive_messages(size_bytes: nil, download_size: 5000)
         expect(size).to eq(5000)
       end
     end

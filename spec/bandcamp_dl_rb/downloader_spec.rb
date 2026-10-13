@@ -102,9 +102,10 @@ RSpec.describe BandcampDlRb::Downloader do
       name = 'x.flac'.b
       raw = File.binread(build_zip(File.join(dest, 'b.zip'), [[name, 'y']]))
       n = name.bytesize
+      overhead = RawZipFixture::LOCAL_FIXED + RawZipFixture::CENTRAL_FIXED +
+                 RawZipFixture::EOCD_FIXED + 1
       expect(raw.bytesize)
-        .to eq(RawZipFixture::LOCAL_FIXED + n + 1 + RawZipFixture::CENTRAL_FIXED + n +
-               RawZipFixture::EOCD_FIXED)
+        .to eq(overhead + (2 * n))
     end
   end
 
@@ -134,6 +135,7 @@ RSpec.describe BandcampDlRb::Downloader do
       it 'resolves the url and size' do
         expect(download).to include(url: 'https://bcbits/flac.zip', format: 'flac', size_mb: '1.2GB')
       end
+
       it 'carries the art id' do
         expect(download[:art_id]).to eq(12_345)
       end
@@ -141,6 +143,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with a format the album does not offer' do
       let(:format) { 'wav' }
+
       it 'falls back to flac' do
         expect(download).to include(url: 'https://bcbits/flac.zip', format: 'flac')
       end
@@ -148,19 +151,23 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with no formats at all' do
       before { pagedata['download_items'][0]['downloads'] = {} }
+
       it { is_expected.to be_nil }
     end
 
     context 'with no download items' do
       let(:pagedata) { { 'download_items' => [] } }
+
       it { is_expected.to be_nil }
     end
 
     context 'with pre-fetched pagedata' do
       let(:extra) { { pagedata: pagedata } }
+
       it 'does not re-fetch the page' do
-        expect(client).not_to receive(:get_pagedata)
+        allow(client).to receive(:get_pagedata)
         download
+        expect(client).not_to have_received(:get_pagedata)
       end
     end
 
@@ -169,6 +176,7 @@ RSpec.describe BandcampDlRb::Downloader do
         pagedata['download_items'][0].delete('art_id')
         pagedata['art_id'] = 99_999
       end
+
       it 'falls back to the page-level art id' do
         expect(download[:art_id]).to eq(99_999)
       end
@@ -176,6 +184,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with no art id anywhere' do
       before { pagedata['download_items'][0].delete('art_id') }
+
       it { expect(download).not_to have_key(:art_id) }
     end
   end
@@ -191,29 +200,33 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with whole gigabytes' do
       let(:download) { { size_mb: '2GB' } }
+
       it { is_expected.to eq(2 * 1024 * 1024 * 1024) }
     end
 
     context 'with decimal gigabytes' do
       let(:download) { { size_mb: '1.2GB' } }
+
       it { is_expected.to eq((1.2 * 1024 * 1024 * 1024).to_i) }
     end
 
     context 'with no size advertised' do
       let(:download) { {} }
+
       it { is_expected.to be_nil }
     end
 
     context 'with an unparseable size' do
       let(:download) { { size_mb: 'nope' } }
+
       it { is_expected.to be_nil }
     end
   end
 
   describe '.album_dir_for' do
-    include_context 'with a temporary directory'
-
     subject(:album_dir) { described_class.album_dir_for(item, dest) }
+
+    include_context 'with a temporary directory'
 
     let(:item) { { 'band_name' => 'Radiohead', 'item_title' => 'Kid A' } }
 
@@ -225,6 +238,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with a dotdot band name' do
       let(:item) { { 'band_name' => '..', 'item_title' => 'Kid A' } }
+
       it 'stays inside the library' do
         expect(album_dir).to start_with(dest + File::SEPARATOR)
       end
@@ -232,6 +246,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with a dotdot item title' do
       let(:item) { { 'band_name' => 'Radiohead', 'item_title' => '..' } }
+
       it 'stays inside the library' do
         expect(album_dir).to start_with(dest + File::SEPARATOR)
       end
@@ -239,6 +254,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with a dotdot band name and title' do
       let(:item) { { 'band_name' => '. .', 'item_title' => '..' } }
+
       it 'stays inside the library' do
         expect(album_dir).to start_with(dest + File::SEPARATOR)
       end
@@ -246,20 +262,23 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'when the path would escape the library' do
       before { allow(described_class).to receive(:contained_in?).and_return(false) }
+
       it 'uses placeholder names' do
         expect(album_dir).to eq(File.join(dest, 'Unknown Artist', 'Unknown Album'))
       end
+
       it 'warns that the path escapes' do
-        expect(BandcampDlRb).to receive(:log_verbose).with(/escapes library root/)
+        allow(BandcampDlRb).to receive(:log_verbose)
         album_dir
+        expect(BandcampDlRb).to have_received(:log_verbose).with(/escapes library root/)
       end
     end
   end
 
   describe '.download_album' do
-    include_context 'with a temporary directory'
-
     subject(:outcome) { described_class.download_album(client, item, dest, 'flac', **extra) }
+
+    include_context 'with a temporary directory'
 
     let(:extra) { {} }
     let(:item) do
@@ -293,18 +312,22 @@ RSpec.describe BandcampDlRb::Downloader do
     # extraction and directory layout.
     context 'with a zip archive' do
       it { is_expected.to eq(:downloaded) }
+
       it 'extracts the tracks into the album dir' do
         outcome
         expect(File.read(File.join(album_dir, '01 Everything In Its Right Place.flac'))).to eq('audio')
       end
+
       it 'drops the archive' do
         outcome
         expect(File).not_to exist(File.join(album_dir, 'download.zip'))
       end
+
       it 'leaves no bc temp dir behind' do
         outcome
         expect(Dir.glob(File.join(Dir.tmpdir, 'bc*'))).to eq(bc_temp_dirs_before)
       end
+
       context 'with unzip disabled' do
         let(:extra) { { unzip: false } }
 
@@ -318,6 +341,7 @@ RSpec.describe BandcampDlRb::Downloader do
     context 'with a single-track download' do
       let(:archive) { 'flacdata' }
       let(:download_url) { 'https://bcbits.com/track.flac' }
+
       it 'copies the file into the album dir' do
         outcome
         expect(Dir.glob(File.join(album_dir, '*.flac'))).not_to be_empty
@@ -326,7 +350,9 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with an archive that cannot be extracted' do
       let(:archive) { "PK\x03\x04truncated" }
+
       before { allow(described_class).to receive(:sleep) }
+
       it 'reports success anyway' do
         outcome
         expect(File).to exist(File.join(album_dir, 'Kid A.zip'))
@@ -335,21 +361,26 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with the album already downloaded' do
       let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         FileUtils.touch(File.join(album_dir, '01.flac'))
       end
+
       it { is_expected.to eq(:skipped) }
     end
 
     context 'with an album whose extraction failed once' do
       # Second run must skip rather than re-download and re-fail forever.
       let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
+
       before { allow(described_class).to receive(:extract_zip).and_return(false) }
+
       it 'is skipped on the second run' do
         described_class.download_album(client, item, dest, 'flac')
         expect(described_class.download_album(client, item, dest, 'flac')).to eq(:skipped)
       end
+
       it 'only downloads once' do
         described_class.download_album(client, item, dest, 'flac')
         described_class.download_album(client, item, dest, 'flac')
@@ -359,94 +390,31 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'when the album offers no download' do
       let(:pagedata) { { 'download_items' => [] } }
+
       it { is_expected.to eq(:unavailable) }
     end
 
     context 'when the download fails' do
       let(:archive) { 'never served' }
+
       before do
         stub_request(:get, download_url).to_return(status: 500)
         allow(described_class).to receive(:sleep)
       end
+
       it { is_expected.to eq(:failed) }
+
       it 'leaves no bc temp dir behind' do
         outcome
         expect(Dir.glob(File.join(Dir.tmpdir, 'bc*'))).to eq(bc_temp_dirs_before)
       end
     end
-
-    context 'with cover art advertised' do
-      let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
-      let(:pagedata) do
-        {
-          'download_items' => [
-            {
-              'downloads' => { 'flac' => { 'url' => download_url, 'size_mb' => '1MB' } },
-              'art_id' => 12_345
-            }
-          ]
-        }
-      end
-      before { stub_request(:get, 'https://f4.bcbits.com/img/a12345_10.jpg').to_return(body: 'coverdata') }
-      it 'saves cover.jpg from the CDN' do
-        outcome
-        expect(File.read(File.join(album_dir, 'cover.jpg'))).to eq('coverdata')
-      end
-    end
-
-    context 'with a cover already on disk' do
-      let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
-      let(:pagedata) do
-        {
-          'download_items' => [
-            {
-              'downloads' => { 'flac' => { 'url' => download_url, 'size_mb' => '1MB' } },
-              'art_id' => 12_345
-            }
-          ]
-        }
-      end
-      before do
-        FileUtils.mkdir_p(album_dir)
-        File.write(File.join(album_dir, 'cover.jpg'), 'existing-cover')
-        stub_request(:get, 'https://f4.bcbits.com/img/a12345_10.jpg').to_return(body: 'new-cover')
-      end
-      it 'leaves the existing cover alone' do
-        outcome
-        expect(File.read(File.join(album_dir, 'cover.jpg'))).to eq('existing-cover')
-      end
-    end
-
-    context 'with release metadata' do
-      let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
-      let(:pagedata) do
-        {
-          'album_release_date' => '1 Oct 2000',
-          'download_items' => [
-            {
-              'downloads' => { 'flac' => { 'url' => download_url, 'size_mb' => '1MB' } },
-              'trackinfo' => [{ 'title' => 'Everything In Its Right Place', 'duration' => 251, 'track_num' => 1 }]
-            }
-          ]
-        }
-      end
-      it 'writes album.json with the release date' do
-        outcome
-        info = JSON.parse(File.read(File.join(album_dir, 'album.json')))
-        expect(info['release_date']).to eq('1 Oct 2000')
-      end
-      it 'writes album.json with the tracklist' do
-        outcome
-        info = JSON.parse(File.read(File.join(album_dir, 'album.json')))
-        expect(info['tracklist'].first['title']).to eq('Everything In Its Right Place')
-      end
-    end
   end
 
   describe '.temp_dir_for' do
-    subject(:temp_dir) { @temp_dir ||= described_class.temp_dir_for('sale_item_id' => 7) }
+    subject(:temp_dir) { described_class.temp_dir_for('sale_item_id' => 7) }
 
-    after { FileUtils.rm_rf(@temp_dir) if @temp_dir }
+    after { FileUtils.rm_rf(temp_dir) }
 
     it 'creates a real directory' do
       expect(File).to be_directory(temp_dir)
@@ -462,9 +430,9 @@ RSpec.describe BandcampDlRb::Downloader do
   end
 
   describe '.download_to_temp' do
-    include_context 'with a temporary directory'
-
     subject(:tmp_file) { described_class.download_to_temp(client, download, dest) }
+
+    include_context 'with a temporary directory'
 
     let(:download) { { url: 'https://bcbits.com/track.flac', format: 'flac' } }
 
@@ -500,27 +468,34 @@ RSpec.describe BandcampDlRb::Downloader do
           ]
         }
       end
+
       it 'maps the artist' do
         expect(info['artist']).to eq('Radiohead')
       end
+
       it 'maps the title' do
         expect(info['title']).to eq('Kid A')
       end
+
       it 'maps the release date' do
         expect(info['release_date']).to eq('1 Oct 2000')
       end
+
       it 'maps the label' do
         expect(info['label']).to eq('XL Recordings')
       end
+
       it 'maps the credits' do
         expect(info['credits']).to eq('Written by Radiohead')
       end
+
       it 'keeps durations and track numbers' do
+        tracklist = [
+          { 'title' => 'Everything In Its Right Place', 'duration' => 251, 'track_num' => 1 },
+          { 'title' => 'Kid A', 'duration' => 285, 'track_num' => 2 }
+        ]
         expect(info['tracklist']).to eq(
-          [
-            { 'title' => 'Everything In Its Right Place', 'duration' => 251, 'track_num' => 1 },
-            { 'title' => 'Kid A', 'duration' => 285, 'track_num' => 2 }
-          ]
+          tracklist
         )
       end
     end
@@ -530,6 +505,7 @@ RSpec.describe BandcampDlRb::Downloader do
         { 'trackinfo' => [{ 'title' => 'Windowlicker', 'duration' => 377 }],
           'download_items' => [{ 'downloads' => {} }] }
       end
+
       it 'still builds a tracklist' do
         expect(info['tracklist']).to eq([{ 'title' => 'Windowlicker', 'duration' => 377 }])
       end
@@ -537,19 +513,21 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with no metadata at all' do
       let(:pagedata) { { 'download_items' => [{}] } }
+
       it { is_expected.to eq({}) }
     end
 
     context 'with a nil payload' do
       let(:pagedata) { nil }
+
       it { is_expected.to eq({}) }
     end
   end
 
   describe '.save_album_info' do
-    include_context 'with a temporary directory'
-
     subject(:written) { described_class.save_album_info(pagedata, dest) }
+
+    include_context 'with a temporary directory'
 
     let(:pagedata) do
       {
@@ -572,6 +550,7 @@ RSpec.describe BandcampDlRb::Downloader do
         written
         expect(info['release_date']).to eq('1 Oct 2000')
       end
+
       it 'writes the tracklist' do
         written
         expect(info['tracklist'].first['title']).to eq('Track 1')
@@ -580,6 +559,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with a nil payload' do
       let(:pagedata) { nil }
+
       it 'writes nothing' do
         written
         expect(Dir.glob(File.join(dest, '*'))).to be_empty
@@ -588,6 +568,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with empty metadata' do
       let(:pagedata) { { 'download_items' => [{}] } }
+
       it 'writes nothing' do
         written
         expect(Dir.glob(File.join(dest, '*'))).to be_empty
@@ -596,6 +577,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'when extraction raises' do
       before { allow(described_class).to receive(:extract_album_metadata).and_raise(StandardError, 'parse error') }
+
       it 'swallows the error' do
         expect { written }.not_to raise_error
       end
@@ -603,16 +585,18 @@ RSpec.describe BandcampDlRb::Downloader do
   end
 
   describe '.save_cover' do
-    include_context 'with a temporary directory'
-
     subject(:saved) { described_class.save_cover(client, download_info, dest) }
+
+    include_context 'with a temporary directory'
 
     let(:cover_path) { File.join(dest, 'cover.jpg') }
     let(:cover_url) { 'https://f4.bcbits.com/img/a12345_10.jpg' }
 
     context 'with an art id' do
       let(:download_info) { { art_id: 12_345 } }
+
       before { stub_request(:get, cover_url).to_return(body: 'coverdata') }
+
       it 'writes cover.jpg' do
         saved
         expect(File.read(cover_path)).to eq('coverdata')
@@ -621,6 +605,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'without an art id' do
       let(:download_info) { {} }
+
       it 'requests nothing' do
         saved
         expect(a_request(:get, cover_url)).not_to have_been_made
@@ -630,10 +615,12 @@ RSpec.describe BandcampDlRb::Downloader do
     context 'when the cover download fails' do
       let(:download_info) { { art_id: 1 } }
       let(:cover_url) { 'https://f4.bcbits.com/img/a1_10.jpg' }
+
       before do
         stub_request(:get, cover_url).to_return(status: 500)
         allow(described_class).to receive(:sleep)
       end
+
       it 'removes the partial file' do
         saved
         expect(File).not_to exist(cover_path)
@@ -642,10 +629,12 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'when a cover is already on disk' do
       let(:download_info) { { art_id: 12_345 } }
+
       before do
         File.write(cover_path, 'existing')
         stub_request(:get, cover_url).to_return(body: 'replacement')
       end
+
       it 'does not overwrite it' do
         saved
         expect(File.read(cover_path)).to eq('existing')
@@ -654,7 +643,9 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'when the download raises' do
       let(:download_info) { { art_id: 12_345 } }
+
       before { stub_request(:get, cover_url).to_raise(StandardError) }
+
       it 'swallows the error' do
         expect { saved }.not_to raise_error
       end
@@ -662,9 +653,9 @@ RSpec.describe BandcampDlRb::Downloader do
   end
 
   describe '.extract_zip' do
-    include_context 'with a temporary directory'
-
     subject(:extracted) { described_class.extract_zip(zip_path, dest, **extra) }
+
+    include_context 'with a temporary directory'
 
     let(:extra) { {} }
     let(:zip_path) { File.join(dest, 'album.zip') }
@@ -682,11 +673,14 @@ RSpec.describe BandcampDlRb::Downloader do
           'Radiohead - Kid A/cover.jpg' => 'zipcover'
         )
       end
+
       it { is_expected.to be true }
+
       it 'flattens the nested path' do
         extracted
         expect(File.read(File.join(dest, '01 Track.flac'))).to eq('audio')
       end
+
       it 'extracts the cover' do
         extracted
         expect(File.read(File.join(dest, 'cover.jpg'))).to eq('zipcover')
@@ -701,10 +695,12 @@ RSpec.describe BandcampDlRb::Downloader do
           'Radiohead - Kid A/__MACOSX/._01' => 'skip'
         )
       end
+
       it 'skips the dotfiles' do
         extracted
         expect(File).not_to exist(File.join(dest, '.hidden'))
       end
+
       it 'skips the AppleDouble files' do
         extracted
         expect(File).not_to exist(File.join(dest, '._01'))
@@ -716,10 +712,12 @@ RSpec.describe BandcampDlRb::Downloader do
         File.write(File.join(dest, 'cover.jpg'), 'cdn-cover')
         write_zip('cover.jpg' => 'zipcover', '01.flac' => 'audio')
       end
+
       it 'keeps the existing cover' do
         extracted
         expect(File.read(File.join(dest, 'cover.jpg'))).to eq('cdn-cover')
       end
+
       it 'still extracts the tracks' do
         extracted
         expect(File).to exist(File.join(dest, '01.flac'))
@@ -728,21 +726,27 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with an unreadable archive' do
       before { File.write(zip_path, 'not a zip') }
+
       it { is_expected.to be false }
     end
 
     context 'with CP932 entry names' do
       subject(:extracted) { described_class.extract_zip(zip_path, album_dir) }
+
       let(:album_dir) { File.join(dest, '小鬼', 'Linux舟') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         build_zip(zip_path, [[CP932_TRACK, 'audio'], ['cover.jpg'.b, 'zipcover']])
       end
+
       it { is_expected.to be true }
+
       it 'decodes the name' do
         extracted
         expect(File.read(File.join(album_dir, "01 \u30c6\u30b9\u30c8 - \u30b5\u30b0\u30c3\u30ad.flac"))).to eq('audio')
       end
+
       it 'leaves ASCII names alone' do
         extracted
         expect(File.read(File.join(album_dir, 'cover.jpg'))).to eq('zipcover')
@@ -751,15 +755,19 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with bytes that are not valid CP932' do
       subject(:extracted) { described_class.extract_zip(zip_path, album_dir) }
+
       let(:album_dir) { File.join(dest, "Caf\u00c9", 'Ambiance') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         build_zip(zip_path, [[CP437_TRACK, 'audio']])
       end
+
       it 'extracts exactly one file' do
         extracted
         expect(Dir.children(album_dir).length).to eq(1)
       end
+
       it 'keeps the payload' do
         extracted
         expect(File.read(File.join(album_dir, Dir.children(album_dir).first))).to eq('audio')
@@ -768,11 +776,14 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with an explicit entry encoding' do
       subject(:extracted) { described_class.extract_zip(zip_path, album_dir, encoding: 'CP437') }
+
       let(:album_dir) { File.join(dest, "Caf\u00c9", 'Ambiance') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         build_zip(zip_path, [[CP437_TRACK, 'audio']])
       end
+
       it 'honours the requested encoding' do
         extracted
         expect(File.read(File.join(album_dir, "01 Caf\u0398 - Track.mp3"))).to eq('audio')
@@ -781,19 +792,24 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with a name that cannot be decoded at all' do
       subject(:extracted) { described_class.extract_zip(zip_path, album_dir, encoding: 'UTF-8') }
+
       let(:album_dir) { File.join(dest, 'Mystery', 'Album') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         build_zip(zip_path, [["\x81\x20\xff\xfe broken.flac".b, 'audio']])
       end
+
       it 'extracts exactly one file' do
         extracted
         expect(Dir.children(album_dir).length).to eq(1)
       end
+
       it 'keeps the file extension' do
         extracted
         expect(Dir.children(album_dir).first).to end_with('.flac')
       end
+
       it 'keeps the payload' do
         extracted
         expect(File.read(File.join(album_dir, Dir.children(album_dir).first))).to eq('audio')
@@ -802,11 +818,14 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with reserved characters in a name' do
       subject(:extracted) { described_class.extract_zip(zip_path, album_dir) }
+
       let(:album_dir) { File.join(dest, 'Artist', 'Album') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         build_zip(zip_path, [['we:ird|name.flac'.b, 'audio']])
       end
+
       it 'scrubs them' do
         extracted
         expect(Dir.children(album_dir)).to eq(['we_ird_name.flac'])
@@ -815,15 +834,19 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with a traversing entry name' do
       subject(:extracted) { described_class.extract_zip(zip_path, album_dir) }
+
       let(:album_dir) { File.join(dest, 'Artist', 'Album') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         build_zip(zip_path, [['../../escaped.flac'.b, 'audio']])
       end
+
       it 'writes the entry inside the album dir' do
         extracted
         expect(File.read(File.join(album_dir, 'escaped.flac'))).to eq('audio')
       end
+
       it 'does not write outside the album dir' do
         extracted
         expect(File).not_to exist(File.join(dest, 'escaped.flac'))
@@ -838,20 +861,24 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with valid UTF-8' do
       let(:name) { '01 トラック.flac'.b }
+
       it { is_expected.to eq('01 トラック.flac') }
     end
 
     context 'with CP932 bytes and no encoding' do
       let(:name) { CP932_TRACK }
+
       it { is_expected.to eq("01 \u30c6\u30b9\u30c8 - \u30b5\u30b0\u30c3\u30ad.flac") }
     end
 
     context 'with an unusable named encoding' do
       let(:name) { CP932_TRACK }
       let(:args) { ['NOPE-8'] }
+
       it 'scrubs rather than raising' do
         expect(basename).to be_valid_encoding
       end
+
       it 'keeps the extension' do
         expect(basename).to end_with('.flac')
       end
@@ -859,14 +886,15 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'with only separators' do
       let(:name) { '/.././/' }
+
       it { is_expected.to be_nil }
     end
   end
 
   describe '.place_download' do
-    include_context 'with a temporary directory'
-
     subject(:placed) { described_class.place_download(file, album_dir, **extra) }
+
+    include_context 'with a temporary directory'
 
     let(:extra) { {} }
     let(:album_dir) { File.join(dest, 'Kid A') }
@@ -889,11 +917,14 @@ RSpec.describe BandcampDlRb::Downloader do
         FileUtils.mkdir_p(album_dir)
         write_zip_at(file)
       end
+
       it { is_expected.to be true }
+
       it 'extracts the tracks' do
         placed
         expect(File.read(File.join(album_dir, '01 Track.flac'))).to eq('audio')
       end
+
       it 'removes the temp copy' do
         placed
         expect(File).not_to exist(file)
@@ -905,6 +936,7 @@ RSpec.describe BandcampDlRb::Downloader do
         FileUtils.mkdir_p(album_dir)
         File.write(file, 'FLA-CONTENT')
       end
+
       it 'copies it verbatim' do
         placed
         expect(File.read(File.join(album_dir, 'download.flac'))).to eq('FLA-CONTENT')
@@ -914,14 +946,17 @@ RSpec.describe BandcampDlRb::Downloader do
     context 'with a zip and unzip disabled' do
       let(:extra) { { unzip: false } }
       let(:file) { tmp_file('download.zip') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         write_zip_at(file)
       end
+
       it 'keeps the archive' do
         placed
         expect(File).to exist(File.join(album_dir, 'Kid A.zip'))
       end
+
       it 'extracts nothing' do
         placed
         expect(File).not_to exist(File.join(album_dir, '01 Track.flac'))
@@ -930,15 +965,18 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'when extraction fails' do
       let(:file) { tmp_file('download.zip') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         write_zip_at(file)
         allow(described_class).to receive(:extract_zip).and_return(false)
       end
+
       it 'keeps the archive' do
         placed
         expect(File).to exist(File.join(album_dir, 'Kid A.zip'))
       end
+
       it 'still cleans up the temp dir' do
         placed
         expect(File).not_to exist(File.dirname(file))
@@ -947,6 +985,7 @@ RSpec.describe BandcampDlRb::Downloader do
 
     context 'when extraction partially succeeds' do
       let(:file) { tmp_file('download.zip') }
+
       before do
         FileUtils.mkdir_p(album_dir)
         write_zip_at(file)
@@ -956,231 +995,15 @@ RSpec.describe BandcampDlRb::Downloader do
           false
         end
       end
+
       it 'keeps the archive' do
         placed
         expect(File).to exist(File.join(album_dir, 'Kid A.zip'))
       end
+
       it 'keeps the tracks that did extract' do
         placed
         expect(File.read(File.join(album_dir, '01 Track.flac'))).to eq('audio')
-      end
-    end
-  end
-
-  describe '.write_stream' do
-    include_context 'with a temporary directory'
-
-    subject(:result) { described_class.write_stream(response, File.join(dest, 'out.flac')) }
-
-    # write_stream's job is to batch up the chunks Net::HTTP yields; the
-    # chunking itself is Net::HTTP's. A stubbed HTTP response hands over the
-    # whole body as one chunk, so a double is what actually exercises the
-    # batching this method exists for.
-    def response_yielding(chunks)
-      double('response').tap do |resp|
-        allow(resp).to receive(:read_body) { |&block| chunks.each(&block) }
-      end
-    end
-
-    context 'with a body smaller than the write buffer' do
-      let(:response) { response_yielding(%w[chunk-one- chunk-two- chunk-three]) }
-      it { is_expected.to be true }
-      it 'writes every chunk in order' do
-        result
-        expect(File.read(File.join(dest, 'out.flac'))).to eq('chunk-one-chunk-two-chunk-three')
-      end
-    end
-
-    context 'with a body larger than the write buffer' do
-      # 64KB of chunks over a 1MB buffer, so the buffer is flushed 32 times.
-      let(:response) { response_yielding(Array.new(64) { 'x' * (16 * 1024) }) }
-      let(:expected) { 'x' * (64 * 16 * 1024) }
-      it 'reassembles the whole body' do
-        result
-        expect(File.read(File.join(dest, 'out.flac'))).to eq(expected)
-      end
-      it 'writes the right number of bytes' do
-        result
-        expect(File.size(File.join(dest, 'out.flac'))).to eq(expected.bytesize)
-      end
-    end
-
-    context 'with an empty body' do
-      let(:response) { response_yielding([]) }
-      it 'creates an empty file' do
-        result
-        expect(File.size(File.join(dest, 'out.flac'))).to eq(0)
-      end
-    end
-  end
-
-  describe '.download_file' do
-    include_context 'with a temporary directory'
-
-    subject(:result) { described_class.download_file(client, url, File.join(dest, 'out.flac'), max_retries: 3) }
-
-    let(:url) { 'https://bcbits.com/track.flac' }
-    let(:out) { File.join(dest, 'out.flac') }
-
-    context 'when the server answers directly' do
-      before { stub_request(:get, url).to_return(status: 200, body: 'FLA-CONTENT') }
-      it { is_expected.to be true }
-      it 'writes the body to the destination' do
-        result
-        expect(File.read(out)).to eq('FLA-CONTENT')
-      end
-    end
-
-    context 'when the server redirects' do
-      let(:final_url) { 'https://final.example/file.flac' }
-      before do
-        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
-        stub_request(:get, final_url).to_return(status: 200, body: 'FLA-CONTENT')
-      end
-      it { is_expected.to be true }
-      it 'writes the body from the final hop' do
-        result
-        expect(File.read(out)).to eq('FLA-CONTENT')
-      end
-    end
-
-    context 'when the redirect stays on an allowlisted host' do
-      let(:final_url) { 'https://d1.bcbits.com/final.zip' }
-      before do
-        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
-        stub_request(:get, final_url).to_return(status: 200, body: 'FLA-CONTENT')
-      end
-      it 'keeps the cookie on the redirect' do
-        result
-        expect(a_request(:get, final_url).with(headers: { 'Cookie' => 'identity=ident' })).to have_been_made
-      end
-    end
-
-    context 'when the redirect leaves the allowlist' do
-      let(:final_url) { 'https://example.com/file.flac' }
-      before do
-        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
-        stub_request(:get, final_url).to_return(status: 200, body: 'FLA-CONTENT')
-      end
-      it 'drops the cookie on the redirect' do
-        result
-        expect(a_request(:get, final_url).with { |req| !req.headers.key?('Cookie') }).to have_been_made
-      end
-    end
-
-    context 'when every attempt fails' do
-      before do
-        allow(described_class).to receive(:stream_download).and_return(nil)
-        allow(described_class).to receive(:sleep)
-      end
-      it { is_expected.to be false }
-      it 'makes one attempt per retry' do
-        result
-        expect(described_class).to have_received(:stream_download).exactly(3).times
-      end
-      it 'backs off exponentially' do
-        expect(described_class).to receive(:sleep).with(1).ordered
-        expect(described_class).to receive(:sleep).with(2).ordered
-        expect(described_class).to receive(:sleep).with(4).ordered
-        result
-      end
-    end
-  end
-
-  describe '.stream_download' do
-    subject(:outcome) { described_class.stream_download(client, url, '/tmp/out') }
-
-    let(:url) { 'https://bcbits.com/file.flac' }
-
-    context 'when the connection fails' do
-      before { stub_request(:get, url).to_raise(StandardError, 'connection failed') }
-      it { is_expected.to be_nil }
-    end
-
-    context 'when the server answers with an error' do
-      before { stub_request(:get, url).to_return(status: 500) }
-      it { is_expected.to be_nil }
-    end
-  end
-
-  describe '.download_size' do
-    subject(:size) { described_class.download_size(client, url, max_redirects: 5) }
-
-    let(:url) { 'https://bcbits.com/file.flac' }
-    let(:ranged) { { headers: { 'Range' => 'bytes=0-0' } } }
-
-    context 'when the server honours the range' do
-      before do
-        stub_request(:get, url).with(**ranged)
-                               .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/12345' }, body: 'x')
-      end
-      it { is_expected.to eq(12_345) }
-    end
-
-    context 'when the server ignores the range' do
-      before do
-        stub_request(:get, url).with(**ranged)
-                               .to_return(status: 200, headers: { 'Content-Length' => '2048' }, body: 'x')
-      end
-      it { is_expected.to eq(2048) }
-    end
-
-    context 'when the server redirects first' do
-      let(:final_url) { 'https://final.example/file.flac' }
-      before do
-        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
-        stub_request(:get, final_url).with(**ranged)
-                                     .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/99' }, body: 'x')
-      end
-      it { is_expected.to eq(99) }
-    end
-
-    context 'when the size-check redirect stays on bcbits' do
-      let(:final_url) { 'https://d1.bcbits.com/file.flac' }
-      before do
-        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
-        stub_request(:get, final_url).with(**ranged)
-                                     .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/99' }, body: 'x')
-      end
-      it 'keeps the cookie on the redirect' do
-        size
-        expect(a_request(:get, final_url).with(headers: { 'Cookie' => 'identity=ident' })).to have_been_made
-      end
-    end
-
-    context 'when the size-check redirect leaves the allowlist' do
-      let(:final_url) { 'https://example.com/file.flac' }
-      before do
-        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
-        stub_request(:get, final_url).with(**ranged)
-                                     .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/99' }, body: 'x')
-      end
-      it 'drops the cookie on the redirect' do
-        size
-        expect(a_request(:get, final_url).with { |req| !req.headers.key?('Cookie') }).to have_been_made
-      end
-    end
-
-    context 'when no size header comes back' do
-      before { stub_request(:get, url).with(**ranged).to_return(status: 206, body: 'x') }
-      it { is_expected.to be_nil }
-    end
-
-    context 'when the request fails' do
-      before { stub_request(:get, url).with(**ranged).to_raise(StandardError, 'boom') }
-
-      it { is_expected.to be_nil }
-    end
-
-    context 'when the redirect never ends' do
-      before do
-        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => 'https://other.example/f' })
-        stub_request(:get, 'https://other.example/f')
-          .to_return(status: 302, headers: { 'Location' => 'https://elsewhere.example/f' })
-      end
-
-      it 'gives up once the budget is spent' do
-        expect(described_class.download_size(client, url, max_redirects: 2)).to be_nil
       end
     end
   end

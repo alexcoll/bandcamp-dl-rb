@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+plugins:
+  - rubocop-rspec
+
 AllCops:
   NewCops: enable
   TargetRubyVersion: 3.4
@@ -49,3 +52,32 @@ Naming/AccessorMethodName:
 Naming/PredicateMethod:
   Exclude:
     - 'lib/bandcamp_dl_rb/downloader.rb'
+
+# ---- RSpec (the suite follows betterspecs.org) ----
+RSpec/ExampleLength:
+  # Short, but long enough for a stub plus an assertion on what it recorded.
+  Max: 7
+RSpec/MultipleMemoizedHelpers:
+  # Contexts nest lets per level of setup, so a describe covering a whole
+  # method legitimately declares more than the default five.
+  Max: 12
+RSpec/NestedGroups:
+  # describe > context > context > context. Deeper than this reads worse than
+  # it saves.
+  Max: 4
+RSpec/DescribeClass:
+  Exclude:
+    # Describe a shipped shell-completion file, not a class.
+    - 'spec/bandcamp_dl_rb/completions_spec.rb'
+    # Describes the roff manpage, not a class.
+    - 'spec/bandcamp_dl_rb/manpage_spec.rb'
+RSpec/MultipleDescribes:
+  Exclude:
+    # One top-level group per class under test: Firefox, Safari and the
+    # auto/shared-helper behaviour around them.
+    - 'spec/bandcamp_dl_rb/cookie_extractor_spec.rb'
+RSpec/InstanceVariable:
+  Exclude:
+    # let memoises into an instance variable, and the cleanup hooks need the
+    # value whether or not the example referenced the let.
+    - 'spec/support/**/*'

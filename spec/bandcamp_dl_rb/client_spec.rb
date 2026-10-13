@@ -447,33 +447,33 @@ RSpec.describe BandcampDlRb::Client do
   end
 
   describe '#collection_summary' do
-    it_behaves_like 'a JSON API reader'
-
-    let(:reader_method) { :collection_summary }
-    let(:reader_args) { [] }
-    let(:api_url) { BandcampDlRb::COLLECTION_SUMMARY_URL }
-    let(:api_body) { '{"collection_summary": {"item_count": 42}}' }
     let(:expected) { { 'item_count' => 42 } }
+    let(:api_body) { '{"collection_summary": {"item_count": 42}}' }
+    let(:api_url) { BandcampDlRb::COLLECTION_SUMMARY_URL }
+    let(:reader_args) { [] }
+    let(:reader_method) { :collection_summary }
+
+    it_behaves_like 'a JSON API reader'
   end
 
   describe '#fetch_collection_items' do
-    it_behaves_like 'a JSON API reader'
-
-    let(:reader_method) { :fetch_collection_items }
-    let(:reader_args) { [BandcampFixtures::FAN_ID, 'token', 100] }
-    let(:api_url) { BandcampDlRb::COLLECTION_ITEMS_URL }
-    let(:api_body) { '{"items": [{"id": 1}], "more_available": false}' }
     let(:expected) { { 'items' => [{ 'id' => 1 }], 'more_available' => false } }
+    let(:api_body) { '{"items": [{"id": 1}], "more_available": false}' }
+    let(:api_url) { BandcampDlRb::COLLECTION_ITEMS_URL }
+    let(:reader_args) { [BandcampFixtures::FAN_ID, 'token', 100] }
+    let(:reader_method) { :fetch_collection_items }
+
+    it_behaves_like 'a JSON API reader'
   end
 
   describe '#fetch_hidden_items' do
-    it_behaves_like 'a JSON API reader'
-
-    let(:reader_method) { :fetch_hidden_items }
-    let(:reader_args) { [BandcampFixtures::FAN_ID, 'token', 100] }
-    let(:api_url) { BandcampDlRb::HIDDEN_ITEMS_URL }
-    let(:api_body) { '{"items": [{"id": 1}], "more_available": false}' }
     let(:expected) { { 'items' => [{ 'id' => 1 }], 'more_available' => false } }
+    let(:api_body) { '{"items": [{"id": 1}], "more_available": false}' }
+    let(:api_url) { BandcampDlRb::HIDDEN_ITEMS_URL }
+    let(:reader_args) { [BandcampFixtures::FAN_ID, 'token', 100] }
+    let(:reader_method) { :fetch_hidden_items }
+
+    it_behaves_like 'a JSON API reader'
   end
 
   describe '#parse_tralbum' do
@@ -482,12 +482,18 @@ RSpec.describe BandcampDlRb::Client do
     context 'with an album page' do
       let(:html) { tralbum_page(artist: 'Radiohead', title: 'In Rainbows', id: 2_162_872_411) }
 
-      it 'maps the page onto a download item' do
-        expect(parsed).to eq(
+      let(:expected_item) do
+        {
           'band_name' => 'Radiohead',
           'item_title' => 'In Rainbows',
           'tralbum_id' => 2_162_872_411,
           'tralbum_type' => 'a'
+        }
+      end
+
+      it 'maps the page onto a download item' do
+        expect(parsed).to eq(
+          expected_item
         )
       end
     end

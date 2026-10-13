@@ -7,8 +7,9 @@ RSpec.describe BandcampDlRb do
 
   describe '.run' do
     it 'delegates to CLI.run' do
-      expect(BandcampDlRb::CLI).to receive(:run).with(['--version'], out: $stdout, err: $stderr)
+      allow(BandcampDlRb::CLI).to receive(:run)
       described_class.run(['--version'], out: $stdout, err: $stderr)
+      expect(BandcampDlRb::CLI).to have_received(:run).with(['--version'], out: $stdout, err: $stderr)
     end
   end
 

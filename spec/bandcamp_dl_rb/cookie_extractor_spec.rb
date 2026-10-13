@@ -73,7 +73,11 @@ RSpec.describe BandcampDlRb::CookieExtractor::TempCopy do
 
     before { File.binwrite(src, "\x00cookie db") }
 
-    after { FileUtils.rm_f(src) }
+    after do
+      FileUtils.rm_f(src)
+      described_class.cleanup(copy_dir)
+      described_class.cleanup(copy_dir)
+    end
 
     it 'copies the bytes' do
       expect(File.binread(File.join(copy_dir, described_class::FILE_NAME))).to eq("\x00cookie db")
@@ -90,8 +94,6 @@ RSpec.describe BandcampDlRb::CookieExtractor::TempCopy do
     it 'uses the given prefix under Dir.tmpdir' do
       expect(File.basename(copy_dir)).to start_with('bc_temp_copy_')
     end
-
-    after { described_class.cleanup(copy_dir) }
   end
 
   describe '.cleanup' do
@@ -159,7 +161,7 @@ RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
       db.execute('INSERT INTO moz_cookies (name, value, host) VALUES (?, ?, ?)', [name, value, host])
     end
 
-    context 'with a profile holding the cookie' do
+    context 'with a single profile holding the cookie' do
       it 'returns the value' do
         db = build_profile('abc.default-release')
         add_cookie(db, name: 'identity', value: 'FF-VALUE-123')
@@ -207,7 +209,7 @@ RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
       end
     end
 
-    context 'with a profile holding the cookie' do
+    context 'with a readable profile' do
       it 'removes its private temp copy' do
         db = build_profile('abc.default-release')
         add_cookie(db, name: 'identity', value: 'FF-VALUE-123')
@@ -216,11 +218,11 @@ RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
 
         identity
 
-        expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+        expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to match_array(stale)
       end
     end
 
-    context 'with an unreadable profile' do
+    context 'with a profile it cannot read' do
       it 'removes its private temp copy' do
         broken = File.join(dest, 'broken.default')
         FileUtils.mkdir_p(broken)
@@ -229,7 +231,7 @@ RSpec.describe BandcampDlRb::CookieExtractor::Firefox do
 
         identity
 
-        expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to contain_exactly(*stale)
+        expect(Dir.glob(File.join(Dir.tmpdir, 'bc_*'))).to match_array(stale)
       end
     end
   end
