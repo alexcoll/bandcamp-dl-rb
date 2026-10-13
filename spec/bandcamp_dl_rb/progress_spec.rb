@@ -44,6 +44,16 @@ class FakeTerminal
     lines.last
   end
 
+  # Each download draws two rows: its numbers, then its bar. These pick the
+  # most recent of each.
+  def stats
+    lines.reverse.find { |l| !l.start_with?('[') }
+  end
+
+  def bar
+    lines.reverse.find { |l| l.start_with?('[') }
+  end
+
   # How many rows each repaint rewound over. A renderer that leaked a row per
   # finished download would show counts growing with the number of downloads.
   def rewinds
@@ -95,7 +105,7 @@ RSpec.describe BandcampDlRb::Progress do
     context 'with a terminal' do
       it 'paints the label straight away' do
         handle
-        expect(terminal.line).to include('Artist - Album')
+        expect(terminal.stats).to include('Artist - Album')
       end
     end
 
@@ -122,21 +132,25 @@ RSpec.describe BandcampDlRb::Progress do
     end
 
     context 'with several downloads active' do
-      subject(:line) { terminal.lines.last(4) }
+      subject(:rows) { terminal.lines.last(8) }
 
       before do
         freeze_clock
         4.times { |i| progress.start("Album #{i}", total: 1000) }
       end
 
-      it 'renders one row per active download' do
-        expect(line.map { |l| l[/\w+ \d/] }).to eq(['Album 0', 'Album 1', 'Album 2', 'Album 3'])
+      it 'renders two rows per active download' do
+        expect(rows.map { |l| l[/\w+ \d/] }.compact).to eq(['Album 0', 'Album 1', 'Album 2', 'Album 3'])
+      end
+
+      it 'gives each download its own bar' do
+        expect(rows.count { |l| l.start_with?('[') }).to eq(4)
       end
     end
   end
 
   describe '#advance' do
-    subject(:line) { terminal.line }
+    subject(:stats) { terminal.stats }
 
     let(:total) { 2048 }
     let(:bytes) { 512 }
@@ -183,7 +197,9 @@ RSpec.describe BandcampDlRb::Progress do
       # finish a little past it.
       it { is_expected.to include('100.0%') }
 
-      it { is_expected.to match(/\[=+\s*\]/) }
+      it 'fills the bar' do
+        expect(terminal.bar).to match(/\[=+\s*\]/)
+      end
     end
 
     context 'with an unknown total and elapsed time' do
@@ -251,7 +267,7 @@ RSpec.describe BandcampDlRb::Progress do
       before { handle.advance(-5) }
 
       it 'does not run the bar backwards' do
-        expect(line).to include('0.0%')
+        expect(stats).to include('0.0%')
       end
     end
 
@@ -274,30 +290,30 @@ RSpec.describe BandcampDlRb::Progress do
       let(:handle) { progress.start('A Band Name - An Album Title That Goes On', total: 4096) }
 
       it 'never draws wider than the terminal' do
-        expect(line.length).to be <= 60
+        expect(terminal.bar.length).to be <= 60
       end
 
       it 'truncates the label with an ellipsis' do
-        expect(line).to include('...')
+        expect(stats).to include('...')
       end
     end
 
     context 'with a wide terminal' do
       let(:terminal) { FakeTerminal.new(width: 120) }
-      let(:bar_width) { line[/\[(.*)\]/, 1].length }
+      let(:bar_width) { terminal.bar.length - 2 }
 
       context 'with a name too long to fit' do
         let(:handle) { progress.start(long_name, total: 4096) }
-        let(:long_name) do
-          'Godspeed You! Black Emperor - F♯A♯∞ (Live at the 4th A McGill University 2001)'
-        end
+        let(:long_name) { "#{'Godspeed You! Black Emperor - ' * 4}F♯A♯∞" }
 
         before { handle.advance(2048) }
 
-        # The name is what the user is reading, so it keeps the columns and the
-        # bar stays as narrow as it is allowed to.
-        it 'spends them on the name first' do
-          expect(bar_width).to eq(described_class::MIN_BAR_WIDTH)
+        it 'truncates the numbers row rather than wrapping' do
+          expect(stats).to end_with('...')
+        end
+
+        it 'leaves the bar full width' do
+          expect(bar_width).to eq(116)
         end
       end
 
@@ -306,8 +322,8 @@ RSpec.describe BandcampDlRb::Progress do
 
         before { handle.advance(2048) }
 
-        it 'widens the bar with the rest' do
-          expect(bar_width).to eq(described_class::MAX_BAR_WIDTH)
+        it 'gives the bar the full width' do
+          expect(bar_width).to eq(116)
         end
       end
     end
@@ -318,13 +334,13 @@ RSpec.describe BandcampDlRb::Progress do
 
       # The label and bar give way rather than wrapping onto the next row.
       it 'never draws wider than the terminal' do
-        expect(line.length).to be <= 20
+        expect(terminal.bar.length).to be <= 20
       end
     end
   end
 
   describe '#reset' do
-    subject(:line) { terminal.line }
+    subject(:stats) { terminal.stats }
 
     let(:handle) { progress.start('Album', total: 1000) }
 
@@ -359,13 +375,13 @@ RSpec.describe BandcampDlRb::Progress do
       # abandoned attempt's samples in place, this would report the 1000 bytes
       # spread over two seconds instead.
       it 'measures the rate from the retry alone' do
-        expect(line).to include('500.0 B/s')
+        expect(stats).to include('500.0 B/s')
       end
     end
   end
 
   describe '#finish' do
-    subject(:line) { terminal.line }
+    subject(:stats) { terminal.stats }
 
     before { freeze_clock }
 
@@ -388,7 +404,7 @@ RSpec.describe BandcampDlRb::Progress do
 
       it 'leaves the block cleared' do
         handle.finish
-        expect(terminal.output).to end_with("\e[1A\e[J")
+        expect(terminal.output).to end_with("\e[2A\e[J")
       end
     end
 
@@ -405,7 +421,7 @@ RSpec.describe BandcampDlRb::Progress do
       it { is_expected.to include('Album B') }
 
       it 'drops the finished download' do
-        expect(terminal.line).not_to include('Album A')
+        expect(terminal.stats).not_to include('Album A')
       end
     end
 
@@ -415,10 +431,10 @@ RSpec.describe BandcampDlRb::Progress do
         progress.close
       end
 
-      # Filling the block (1 + 2 + 3) and emptying it again (2 + 1 + 0) never
+      # Filling the block (2 + 4 + 6) and emptying it again (4 + 2 + 0) never
       # needed a rewind wider than the number of downloads in flight.
       it 'never rewinds over more rows than are active' do
-        expect(terminal.rewinds.max).to eq(3)
+        expect(terminal.rewinds.max).to eq(6)
       end
     end
 
@@ -432,8 +448,8 @@ RSpec.describe BandcampDlRb::Progress do
         end
       end
 
-      it 'keeps one row per active download, not per download' do
-        expect(terminal.rewinds.max).to eq(1)
+      it 'keeps two rows per active download, not per download' do
+        expect(terminal.rewinds.max).to eq(2)
       end
     end
 
@@ -470,7 +486,7 @@ RSpec.describe BandcampDlRb::Progress do
       # The message has to land on a cleared row, not in the middle of the
       # block, or the bars below it are left stranded.
       it 'clears the block before writing' do
-        expect(terminal.output).to match(%r{\e\[1A\e\[J {2}Saved to /library/Album\n})
+        expect(terminal.output).to match(%r{\e\[2A\e\[J {2}Saved to /library/Album\n})
       end
 
       it 'repaints the block underneath' do
@@ -503,7 +519,7 @@ RSpec.describe BandcampDlRb::Progress do
     context 'with a bar on screen' do
       it 'erases the block' do
         progress.close
-        expect(terminal.output).to end_with("\e[1A\e[J")
+        expect(terminal.output).to end_with("\e[2A\e[J")
       end
     end
   end

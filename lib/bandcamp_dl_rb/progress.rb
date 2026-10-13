@@ -25,10 +25,6 @@ module BandcampDlRb
     MIN_WIDTH = 20
     DEFAULT_WIDTH = 80
     MIN_BAR_WIDTH = 8
-    # The bar only has to read as "how far along", so it takes a narrow slice
-    # and the album name gets the rest. A wide bar spent columns the name could
-    # have used.
-    MAX_BAR_WIDTH = 16
     LABEL_RESERVE = 12
     ELLIPSIS = '...'
     SPINNER_PERIOD = 0.9
@@ -173,7 +169,7 @@ module BandcampDlRb
       # Sample before rendering, so the throughput on screen covers the bytes
       # this repaint is about to draw rather than lagging a frame behind them.
       @entries.each(&:painted!)
-      lines = @entries.map { |entry| line_for(entry) }
+      lines = @entries.flat_map { |entry| lines_for(entry) }
       # A repaint that would draw exactly what is already on screen only makes
       # the block flicker, so skip it.
       return if lines == @drawn
@@ -186,24 +182,19 @@ module BandcampDlRb
       out.flush
     end
 
-    def line_for(entry)
-      tail = tail_for(entry)
-      # " [] " is the two brackets plus their padding. The name gets the space
-      # first: it is truncated only once the bar has taken its minimum, so a
-      # long album title stays legible rather than losing columns to a bar that
-      # only has to read as "how far along". The bar then expands with whatever
-      # the name did not need, up to a width that still looks deliberate.
-      spare = terminal_width - tail.length - 4
-      line = if spare < LABEL_RESERVE
-               tail
-             else
-               label = truncate(entry.label, spare - MIN_BAR_WIDTH)
-               bar_width = clamp(spare - label.length, MIN_BAR_WIDTH, MAX_BAR_WIDTH)
-               "#{label} [#{bar_for(entry, bar_width)}] #{tail}"
-             end
-      # A narrow enough terminal leaves the tail itself overflowing, and a line
-      # wider than the terminal wraps and corrupts the block below it.
-      truncate(line, terminal_width)
+    # Each download takes two rows: the name and its numbers on one, the bar
+    # across the full width on the next. Sharing a single row left the title
+    # cut off and the bar squeezed down to a stub, and neither half was
+    # readable.
+    def lines_for(entry)
+      width = terminal_width
+      stats = truncate("#{entry.label}  #{tail_for(entry)}", width)
+      # Too narrow for a bar worth drawing; the numbers alone still say
+      # something, and a wrapped row would corrupt the block beneath it.
+      return [stats] if width < LABEL_RESERVE
+
+      bar_width = clamp(width - 4, MIN_BAR_WIDTH, width - 4)
+      [stats, "[#{bar_for(entry, bar_width)}]"]
     end
 
     # Everything after the bar: percentage and byte counts when the size is
