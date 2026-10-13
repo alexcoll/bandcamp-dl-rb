@@ -495,6 +495,28 @@ RSpec.describe BandcampDlRb::Downloader do
     ensure
       FileUtils.rm_rf(dir) if dir
     end
+
+    it 'creates the temp dir under a custom base passed positionally' do
+      base = Dir.mktmpdir
+      begin
+        dir = described_class.temp_dir_for(nil, base)
+        expect(dir).to start_with(base + File::SEPARATOR)
+        expect(File.directory?(dir)).to be true
+      ensure
+        FileUtils.rm_rf(base)
+      end
+    end
+
+    it 'creates the temp dir under a custom base passed via keyword' do
+      base = Dir.mktmpdir
+      begin
+        dir = described_class.temp_dir_for(temp_dir: base)
+        expect(dir).to start_with(base + File::SEPARATOR)
+        expect(File.directory?(dir)).to be true
+      ensure
+        FileUtils.rm_rf(base)
+      end
+    end
   end
 
   describe '.download_to_temp' do
