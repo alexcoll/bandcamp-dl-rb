@@ -62,9 +62,9 @@ RSpec/MultipleMemoizedHelpers:
   # method legitimately declares more than the default five.
   Max: 12
 RSpec/NestedGroups:
-  # describe > context > context > context. Deeper than this reads worse than
-  # it saves.
-  Max: 4
+  # describe > method > situation > variant > variant. Anything deeper and a
+  # reader loses track of which setup belongs to the example they are reading.
+  Max: 5
 RSpec/DescribeClass:
   Exclude:
     # Describe a shipped shell-completion file, not a class.

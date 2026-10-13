@@ -92,9 +92,11 @@ RSpec.describe BandcampDlRb::Progress do
   describe '#start' do
     subject(:handle) { progress.start('Artist - Album', total: 1000) }
 
-    it 'paints the label straight away' do
-      handle
-      expect(terminal.line).to include('Artist - Album')
+    context 'with a terminal' do
+      it 'paints the label straight away' do
+        handle
+        expect(terminal.line).to include('Artist - Album')
+      end
     end
 
     context 'without a terminal' do
@@ -468,9 +470,11 @@ RSpec.describe BandcampDlRb::Progress do
 
     # The bars share stderr with the log, so nothing may be left on screen for
     # the summary to overwrite.
-    it 'erases the block' do
-      progress.close
-      expect(terminal.output).to end_with("\e[1A\e[J")
+    context 'with a bar on screen' do
+      it 'erases the block' do
+        progress.close
+        expect(terminal.output).to end_with("\e[1A\e[J")
+      end
     end
   end
 end

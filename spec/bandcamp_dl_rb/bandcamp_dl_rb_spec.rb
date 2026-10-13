@@ -6,16 +6,20 @@ RSpec.describe BandcampDlRb do
   after { described_class.verbose = nil }
 
   describe '.run' do
-    it 'delegates to CLI.run' do
-      allow(BandcampDlRb::CLI).to receive(:run)
-      described_class.run(['--version'], out: $stdout, err: $stderr)
-      expect(BandcampDlRb::CLI).to have_received(:run).with(['--version'], out: $stdout, err: $stderr)
+    context 'with any arguments' do
+      it 'delegates to CLI.run' do
+        allow(BandcampDlRb::CLI).to receive(:run)
+        described_class.run(['--version'], out: $stdout, err: $stderr)
+        expect(BandcampDlRb::CLI).to have_received(:run).with(['--version'], out: $stdout, err: $stderr)
+      end
     end
   end
 
   describe '.log' do
-    it 'writes to stderr' do
-      expect { described_class.log('test message') }.to output("test message\n").to_stderr
+    context 'with any message' do
+      it 'writes to stderr' do
+        expect { described_class.log('test message') }.to output("test message\n").to_stderr
+      end
     end
   end
 

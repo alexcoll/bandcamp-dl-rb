@@ -81,31 +81,33 @@ RSpec.describe BandcampDlRb::Downloader do
   describe 'the raw-encoding zip fixture' do
     include_context 'with a temporary directory'
 
-    it 'round-trips through rubyzip' do
-      path = build_zip(File.join(dest, 'a.zip'), [[CP932_TRACK, 'audio'], ['cover.jpg'.b, 'cover']])
-      seen = {}
-      Zip::File.open(path) { |z| z.each { |e| seen[e.name] = e.get_input_stream.read } }
-      expect(seen.keys.map(&:encoding)).to all(eq(Encoding::ASCII_8BIT))
-    end
+    context 'with a hand-built fixture' do
+      it 'round-trips through rubyzip' do
+        path = build_zip(File.join(dest, 'a.zip'), [[CP932_TRACK, 'audio'], ['cover.jpg'.b, 'cover']])
+        seen = {}
+        Zip::File.open(path) { |z| z.each { |e| seen[e.name] = e.get_input_stream.read } }
+        expect(seen.keys.map(&:encoding)).to all(eq(Encoding::ASCII_8BIT))
+      end
 
-    it 'round-trips a CP932 payload' do
-      path = build_zip(File.join(dest, 'a.zip'), [[CP932_TRACK, 'audio']])
-      expect(Zip::File.open(path) { |z| z.first.get_input_stream.read }).to eq('audio')
-    end
+      it 'round-trips a CP932 payload' do
+        path = build_zip(File.join(dest, 'a.zip'), [[CP932_TRACK, 'audio']])
+        expect(Zip::File.open(path) { |z| z.first.get_input_stream.read }).to eq('audio')
+      end
 
-    it 'round-trips a plain payload' do
-      path = build_zip(File.join(dest, 'a.zip'), [['cover.jpg'.b, 'cover']])
-      expect(Zip::File.open(path) { |z| z.first.get_input_stream.read }).to eq('cover')
-    end
+      it 'round-trips a plain payload' do
+        path = build_zip(File.join(dest, 'a.zip'), [['cover.jpg'.b, 'cover']])
+        expect(Zip::File.open(path) { |z| z.first.get_input_stream.read }).to eq('cover')
+      end
 
-    it 'uses the correct fixed header sizes' do
-      name = 'x.flac'.b
-      raw = File.binread(build_zip(File.join(dest, 'b.zip'), [[name, 'y']]))
-      n = name.bytesize
-      overhead = RawZipFixture::LOCAL_FIXED + RawZipFixture::CENTRAL_FIXED +
-                 RawZipFixture::EOCD_FIXED + 1
-      expect(raw.bytesize)
-        .to eq(overhead + (2 * n))
+      it 'uses the correct fixed header sizes' do
+        name = 'x.flac'.b
+        raw = File.binread(build_zip(File.join(dest, 'b.zip'), [[name, 'y']]))
+        n = name.bytesize
+        overhead = RawZipFixture::LOCAL_FIXED + RawZipFixture::CENTRAL_FIXED +
+                   RawZipFixture::EOCD_FIXED + 1
+        expect(raw.bytesize)
+          .to eq(overhead + (2 * n))
+      end
     end
   end
 
@@ -427,67 +429,69 @@ RSpec.describe BandcampDlRb::Downloader do
         allow(handle).to receive(:finish)
       end
 
-      it 'labels the bar with the album and sizes it from the reported size' do
-        outcome
-        expect(progress).to have_received(:start).with('Radiohead - Kid A', total: 10 * 1024 * 1024)
-      end
+      context 'with an album to download' do
+        it 'labels the bar with the album and sizes it from the reported size' do
+          outcome
+          expect(progress).to have_received(:start).with('Radiohead - Kid A', total: 10 * 1024 * 1024)
+        end
 
-      it 'starts the bar without a total when no size is reported' do
-        allow(client).to receive(:get_pagedata).and_return(
-          'download_items' => [{ 'downloads' => { 'flac' => { 'url' => download_url } } }]
-        )
+        it 'starts the bar without a total when no size is reported' do
+          allow(client).to receive(:get_pagedata).and_return(
+            'download_items' => [{ 'downloads' => { 'flac' => { 'url' => download_url } } }]
+          )
 
-        outcome
-        expect(progress).to have_received(:start).with('Radiohead - Kid A', total: nil)
-      end
+          outcome
+          expect(progress).to have_received(:start).with('Radiohead - Kid A', total: nil)
+        end
 
-      # Probing the size would cost an extra HTTP request per album, and the
-      # pagedata already carries one for free.
-      it 'does not spend a request measuring the size' do
-        allow(described_class).to receive(:download_size)
-        outcome
-        expect(described_class).not_to have_received(:download_size)
-      end
+        # Probing the size would cost an extra HTTP request per album, and the
+        # pagedata already carries one for free.
+        it 'does not spend a request measuring the size' do
+          allow(described_class).to receive(:download_size)
+          outcome
+          expect(described_class).not_to have_received(:download_size)
+        end
 
-      it 'clears the bar once the transfer is over, so the line does not linger' do
-        outcome
-        expect(handle).to have_received(:finish)
-      end
+        it 'clears the bar once the transfer is over, so the line does not linger' do
+          outcome
+          expect(handle).to have_received(:finish)
+        end
 
-      it 'clears the bar even when the download fails' do
-        stub_request(:get, download_url).to_return(status: 500)
-        allow(described_class).to receive(:sleep)
-
-        outcome
-        expect(handle).to have_received(:finish)
-      end
-
-      it 'reports the bytes of the served archive' do
-        outcome
-        expect(handle).to have_received(:advance).with(archive.bytesize).at_least(:once)
-      end
-
-      # A retry restarts the transfer, so the bar must rewind rather than
-      # accumulate both attempts and overshoot the total.
-      context 'when the first attempt fails' do
-        before do
-          stub_request(:get, download_url)
-            .to_return(status: 500).then
-            .to_return(status: 200, body: archive)
+        it 'clears the bar even when the download fails' do
+          stub_request(:get, download_url).to_return(status: 500)
           allow(described_class).to receive(:sleep)
-        end
-
-        it 'rewinds the bar at the start of the retry' do
-          outcome
-          expect(handle).to have_received(:reset).at_least(:once)
-        end
-
-        it 'reports only the bytes of the successful attempt' do
-          reported = []
-          allow(handle).to receive(:advance) { |bytes| reported << bytes }
 
           outcome
-          expect(reported.sum).to eq(archive.bytesize)
+          expect(handle).to have_received(:finish)
+        end
+
+        it 'reports the bytes of the served archive' do
+          outcome
+          expect(handle).to have_received(:advance).with(archive.bytesize).at_least(:once)
+        end
+
+        # A retry restarts the transfer, so the bar must rewind rather than
+        # accumulate both attempts and overshoot the total.
+        context 'when the first attempt fails' do
+          before do
+            stub_request(:get, download_url)
+              .to_return(status: 500).then
+              .to_return(status: 200, body: archive)
+            allow(described_class).to receive(:sleep)
+          end
+
+          it 'rewinds the bar at the start of the retry' do
+            outcome
+            expect(handle).to have_received(:reset).at_least(:once)
+          end
+
+          it 'reports only the bytes of the successful attempt' do
+            reported = []
+            allow(handle).to receive(:advance) { |bytes| reported << bytes }
+
+            outcome
+            expect(reported.sum).to eq(archive.bytesize)
+          end
         end
       end
     end
@@ -571,16 +575,18 @@ RSpec.describe BandcampDlRb::Downloader do
 
     after { FileUtils.rm_rf(temp_dir) }
 
-    it 'creates a real directory' do
-      expect(File).to be_directory(temp_dir)
-    end
+    context 'with an item to name it after' do
+      it 'creates a real directory' do
+        expect(File).to be_directory(temp_dir)
+      end
 
-    it 'names it with the bc prefix' do
-      expect(temp_dir).to start_with(File.join(described_class.default_temp_base, 'bc'))
-    end
+      it 'names it with the bc prefix' do
+        expect(temp_dir).to start_with(File.join(described_class.default_temp_base, 'bc'))
+      end
 
-    it 'locks it to 0700' do
-      expect(File.stat(temp_dir).mode & 0o777).to eq(0o700)
+      it 'locks it to 0700' do
+        expect(File.stat(temp_dir).mode & 0o777).to eq(0o700)
+      end
     end
   end
 
@@ -593,12 +599,14 @@ RSpec.describe BandcampDlRb::Downloader do
 
     before { stub_request(:get, download[:url]).to_return(body: 'flacdata') }
 
-    it 'writes the downloaded bytes' do
-      expect(File.read(tmp_file)).to eq('flacdata')
-    end
+    context 'with a served body' do
+      it 'writes the downloaded bytes' do
+        expect(File.read(tmp_file)).to eq('flacdata')
+      end
 
-    it 'locks the file to 0600' do
-      expect(File.stat(tmp_file).mode & 0o777).to eq(0o600)
+      it 'locks the file to 0600' do
+        expect(File.stat(tmp_file).mode & 0o777).to eq(0o600)
+      end
     end
   end
 
@@ -1314,26 +1322,28 @@ RSpec.describe BandcampDlRb::Downloader do
         allow(handle).to receive(:reset)
       end
 
-      it 'reports every byte of the body exactly once' do
-        body = 'y' * 40_000
-        stub_request(:get, url).to_return(status: 200, body: body)
+      context 'with progress reporting wired up' do
+        it 'reports every byte of the body exactly once' do
+          body = 'y' * 40_000
+          stub_request(:get, url).to_return(status: 200, body: body)
 
-        download
-        expect(reported.sum).to eq(body.bytesize)
-      end
+          download
+          expect(reported.sum).to eq(body.bytesize)
+        end
 
-      it 'rewinds the bar at the start of every attempt' do
-        allow(described_class).to receive(:stream_download).and_return(false)
-        allow(described_class).to receive(:sleep)
+        it 'rewinds the bar at the start of every attempt' do
+          allow(described_class).to receive(:stream_download).and_return(false)
+          allow(described_class).to receive(:sleep)
 
-        download
-        expect(handle).to have_received(:reset).exactly(3).times
-      end
+          download
+          expect(handle).to have_received(:reset).exactly(3).times
+        end
 
-      it 'works without any progress handle at all' do
-        stub_request(:get, url).to_return(status: 200, body: 'FLA-CONTENT')
+        it 'works without any progress handle at all' do
+          stub_request(:get, url).to_return(status: 200, body: 'FLA-CONTENT')
 
-        expect(described_class.download_file(client, url, out)).to be true
+          expect(described_class.download_file(client, url, out)).to be true
+        end
       end
     end
   end
@@ -1359,28 +1369,30 @@ RSpec.describe BandcampDlRb::Downloader do
       end
     end
 
-    it { is_expected.to be true }
-
-    it 'reports each chunk as it arrives rather than at flush time' do
-      written
-      expect(reported).to eq(chunks.map(&:bytesize))
-    end
-
-    it 'writes every chunk to the destination' do
-      written
-      expect(File.read(out)).to eq(chunks.join)
-    end
-
-    context 'without a progress handle' do
-      subject(:written) { described_class.write_stream(response, out) }
-
-      let(:handle) { nil }
-
+    context 'with a handle attached' do
       it { is_expected.to be true }
 
-      it 'still writes every chunk' do
+      it 'reports each chunk as it arrives rather than at flush time' do
+        written
+        expect(reported).to eq(chunks.map(&:bytesize))
+      end
+
+      it 'writes every chunk to the destination' do
         written
         expect(File.read(out)).to eq(chunks.join)
+      end
+
+      context 'without a progress handle' do
+        subject(:written) { described_class.write_stream(response, out) }
+
+        let(:handle) { nil }
+
+        it { is_expected.to be true }
+
+        it 'still writes every chunk' do
+          written
+          expect(File.read(out)).to eq(chunks.join)
+        end
       end
     end
   end
