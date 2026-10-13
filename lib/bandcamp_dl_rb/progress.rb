@@ -45,8 +45,7 @@ module BandcampDlRb
       attr_accessor :refresh_interval
     end
 
-    def initialize(out: nil, refresh_interval: nil, interval: nil,
-                   progress_interval: nil, update_interval: nil, **)
+    def initialize(out: nil, refresh_interval: nil, **options)
       @out = out
       @enabled = true
       @lock = Mutex.new
@@ -54,8 +53,10 @@ module BandcampDlRb
       @painted = 0
       # Allow callers to spell the option a handful of ways without caring
       # which one a test or the CLI happened to use.
-      resolved = refresh_interval || interval || progress_interval ||
-                 update_interval || Progress.refresh_interval
+      resolved = refresh_interval ||
+                 options[:refresh_interval] || options[:interval] ||
+                 options[:progress_interval] || options[:update_interval] ||
+                 Progress.refresh_interval
       @refresh_interval = resolved.nil? ? REFRESH_INTERVAL : resolved
       @drawn = []
     end
