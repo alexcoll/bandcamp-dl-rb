@@ -31,19 +31,13 @@ RSpec.describe 'man/bandcamp_dl_rb.1' do
     end
   end
 
-  describe 'the OPTIONS section' do
-    %w[SYNOPSIS DESCRIPTION AUTHENTICATION OPTIONS FORMATS EXAMPLES FILES].each do |section|
-      context "for .SH #{section}" do
-        it 'is documented' do
-          expect(manpage).to include(".SH #{section}")
-        end
-      end
-    end
-
-    context 'for .SH EXIT STATUS' do
-      it 'is documented' do
-        expect(manpage).to include('.SH EXIT STATUS')
-      end
+  describe 'the section layout' do
+    # One assertion rather than one example per section: these are all the
+    # same question ("did a section go missing?") asked about a fixed list.
+    it 'carries every required section' do
+      required = %w[NAME SYNOPSIS DESCRIPTION AUTHENTICATION OPTIONS
+                    FORMATS EXAMPLES FILES] + ['EXIT STATUS']
+      expect(required - manpage.scan(/^\.SH ([A-Z][A-Z ]*)/).flatten).to be_empty
     end
   end
 

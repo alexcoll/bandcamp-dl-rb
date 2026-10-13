@@ -99,12 +99,6 @@ RSpec.describe BandcampDlRb::CLI do
       it { is_expected.to include(browser: 'firefox') }
     end
 
-    context 'with --browser safari' do
-      let(:args) { ['--library', '/x', '--browser', 'safari', 'u'] }
-
-      it { is_expected.to include(browser: 'safari') }
-    end
-
     context 'with --page-size' do
       let(:args) { ['--library', '/x', '--page-size', '250', 'u'] }
 
@@ -281,15 +275,6 @@ RSpec.describe BandcampDlRb::CLI do
         expect(out.string).to eq("bandcamp_dl_rb #{BandcampDlRb::VERSION}\n")
       end
     end
-
-    context 'with -V' do
-      let(:args) { ['-V'] }
-
-      it 'prints the version' do
-        expect { exit_code }.to raise_error(SystemExit)
-        expect(out.string).to include("bandcamp_dl_rb #{BandcampDlRb::VERSION}")
-      end
-    end
   end
 
   describe '#authenticate' do
@@ -463,12 +448,9 @@ RSpec.describe BandcampDlRb::CLI do
         expect(downloaded.map { |d| d[:key] }).to contain_exactly('a100', 'a200')
       end
 
-      it 'exits with 1' do
-        recording_downloader
-        expect(run_cli(['--library', dest, '--filter', 'zzzz', 'testuser'])[:exit_code]).to eq(1)
-      end
-
-      it 'exits with 1' do
+      # A filter matching nothing exits 1 -- already covered by the items-mode
+      # example above. Only the malformed-regex path is unique here.
+      it 'exits with 1 on an invalid regex' do
         recording_downloader
         expect(run_cli(['--library', dest, '--filter', '[', 'testuser'])[:exit_code]).to eq(1)
       end

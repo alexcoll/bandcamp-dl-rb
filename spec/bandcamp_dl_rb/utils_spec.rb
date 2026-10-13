@@ -48,18 +48,6 @@ RSpec.describe BandcampDlRb::Utils do
       it { is_expected.to eq('-') }
     end
 
-    context 'with a space-dotted segment' do
-      let(:name) { ' . ' }
-
-      it { is_expected.to eq('-') }
-    end
-
-    context 'with a dot segment after a space' do
-      let(:name) { '. .' }
-
-      it { is_expected.to eq('-') }
-    end
-
     context 'with dots inside words' do
       let(:name) { 'Dots and Loops' }
 

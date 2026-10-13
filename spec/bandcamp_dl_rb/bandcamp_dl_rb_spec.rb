@@ -75,12 +75,8 @@ RSpec.describe BandcampDlRb do
       it { is_expected.to be true }
     end
 
-    context 'with a bandcamp.com subdomain' do
-      let(:host) { 'radiohead.bandcamp.com' }
-
-      it { is_expected.to be true }
-    end
-
+    # The bandcamp.com cases live in .bc_host? above; download_host? is just
+    # that predicate OR'd with the bcbits domains.
     context 'with the bcbits apex domain' do
       let(:host) { 'bcbits.com' }
 
