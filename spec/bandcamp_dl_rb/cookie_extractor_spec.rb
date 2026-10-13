@@ -79,20 +79,26 @@ RSpec.describe BandcampDlRb::CookieExtractor::TempCopy do
       described_class.cleanup(copy_dir)
     end
 
-    it 'copies the bytes' do
-      expect(File.binread(File.join(copy_dir, described_class::FILE_NAME))).to eq("\x00cookie db")
+    context 'with a readable source file' do
+      it 'copies the bytes' do
+        expect(File.binread(File.join(copy_dir, described_class::FILE_NAME))).to eq("\x00cookie db")
+      end
     end
 
-    it 'locks the dir to 0700' do
-      expect(File.stat(copy_dir).mode & 0o777).to eq(0o700)
+    context 'with the copy in place' do
+      it 'locks the dir to 0700' do
+        expect(File.stat(copy_dir).mode & 0o777).to eq(0o700)
+      end
+
+      it 'locks the copy to 0600' do
+        expect(File.stat(File.join(copy_dir, described_class::FILE_NAME)).mode & 0o777).to eq(0o600)
+      end
     end
 
-    it 'locks the copy to 0600' do
-      expect(File.stat(File.join(copy_dir, described_class::FILE_NAME)).mode & 0o777).to eq(0o600)
-    end
-
-    it 'uses the given prefix under Dir.tmpdir' do
-      expect(File.basename(copy_dir)).to start_with('bc_temp_copy_')
+    context 'with a given prefix' do
+      it 'uses it under Dir.tmpdir' do
+        expect(File.basename(copy_dir)).to start_with('bc_temp_copy_')
+      end
     end
   end
 
@@ -106,14 +112,16 @@ RSpec.describe BandcampDlRb::CookieExtractor::TempCopy do
 
     after { FileUtils.rm_f(src) }
 
-    it 'removes the directory' do
-      removed
-      expect(Dir.exist?(dir)).to be false
-    end
+    context 'with a copy on disk' do
+      it 'removes the directory' do
+        removed
+        expect(Dir.exist?(dir)).to be false
+      end
 
-    it 'leaves no bc temp dir behind' do
-      removed
-      expect(Dir.glob(File.join(Dir.tmpdir, 'bc_temp_copy_*'))).to be_empty
+      it 'leaves no bc temp dir behind' do
+        removed
+        expect(Dir.glob(File.join(Dir.tmpdir, 'bc_temp_copy_*'))).to be_empty
+      end
     end
   end
 end

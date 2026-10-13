@@ -21,7 +21,7 @@ RSpec.describe 'man/bandcamp_dl_rb.1', :parity do
     options_section.scan(/--([a-z][a-z0-9-]*)/).flatten.uniq.map { |name| "--#{name}" }
   end
 
-  describe 'the header' do
+  context 'with a header' do
     it 'names the manual page' do
       expect(manpage).to include('.TH BANDCAMP_DL_RB 1')
     end
@@ -31,7 +31,7 @@ RSpec.describe 'man/bandcamp_dl_rb.1', :parity do
     end
   end
 
-  describe 'the section layout' do
+  context 'with the section layout' do
     # One assertion rather than one example per section: these are all the
     # same question ("did a section go missing?") asked about a fixed list.
     it 'carries every required section' do
@@ -41,7 +41,7 @@ RSpec.describe 'man/bandcamp_dl_rb.1', :parity do
     end
   end
 
-  describe 'option coverage' do
+  context 'with the option list' do
     it 'documents every CLI long option' do
       missing = cli_long_options.reject { |flag| manpage.include?(flag) }
       expect(missing).to be_empty, "manpage is missing #{missing.join(', ')}"
@@ -53,7 +53,7 @@ RSpec.describe 'man/bandcamp_dl_rb.1', :parity do
     end
   end
 
-  describe 'packaging' do
+  context 'when the gem is built' do
     it 'ships in the built gem' do
       spec = Gem::Specification.load(File.expand_path('../../bandcamp-dl-rb.gemspec', __dir__))
       expect(spec.files).to include('man/bandcamp_dl_rb.1')

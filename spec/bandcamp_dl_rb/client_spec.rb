@@ -562,10 +562,12 @@ RSpec.describe BandcampDlRb::Client do
       it { is_expected.to be_nil }
     end
 
-    it 'never keys on a tralbum id as a sale id' do
+    context 'with a tralbum id that is not a sale id' do
       # The old lookup built "a1546900568" and asked for that key, which can
       # never be a collection key.
-      expect(items.keys).not_to include('a1546900568')
+      it 'does not key on it' do
+        expect(items.keys).not_to include('a1546900568')
+      end
     end
   end
 

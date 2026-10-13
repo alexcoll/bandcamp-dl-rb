@@ -19,6 +19,8 @@ complete -c bandcamp_dl_rb -l state-file -d 'Path for the sync state file' -r -F
 complete -c bandcamp_dl_rb -l no-state-file -d 'Do not write a sync state file'
 complete -c bandcamp_dl_rb -l items -d 'Download specific collection items by ID' -r
 complete -c bandcamp_dl_rb -l filter -d 'Download only items matching a regex' -r
+complete -c bandcamp_dl_rb -l no-progress -d 'Do not draw progress bars for downloads'
+complete -c bandcamp_dl_rb -l progress-interval -d 'Repaint progress bars at most once every SECONDS seconds'
 complete -c bandcamp_dl_rb -s v -l verbose -d 'Verbose output'
 complete -c bandcamp_dl_rb -s h -l help -d 'Show help'
 complete -c bandcamp_dl_rb -s V -l version -d 'Show version'

@@ -15,6 +15,8 @@ require 'time'
 require 'bandcamp_dl_rb/version'
 require 'bandcamp_dl_rb/utils'
 require 'bandcamp_dl_rb/cookie_extractor'
+require 'bandcamp_dl_rb/progress/entry'
+require 'bandcamp_dl_rb/progress'
 require 'bandcamp_dl_rb/client'
 require 'bandcamp_dl_rb/downloader'
 require 'bandcamp_dl_rb/cli'
@@ -58,12 +60,15 @@ module BandcampDlRb
     bc_host?(host) || host == 'bcbits.com' || host.end_with?('.bcbits.com')
   end
 
+  # Both log paths go through the progress renderer rather than straight to
+  # $stderr: while bars are being painted, a bare write would land in the
+  # middle of the block and leave the cursor in the wrong place.
   def self.log(msg)
-    warn msg
+    Progress.current.log(msg)
   end
 
   def self.log_verbose(msg)
-    warn msg if verbose
+    log(msg) if verbose
   end
 
   # Convenience entrypoint; delegates to the CLI.

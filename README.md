@@ -220,6 +220,7 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 | `--state-file PATH`          | Path to the sync state file (default: `<library>/.bandcamp-sync.json`). Parent directory is created if missing |
 | `--no-state-file`            | Do not write a sync state file at all |
 | `--dry-run`                  | List what would be downloaded without downloading                |
+| `--no-progress`              | Do not draw progress bars for in-flight downloads               |
 | `-V, --version`              | Show the version and exit                                        |
 | `-v, --verbose`              | Verbose output                                                   |
 | `-h, --help`                 | Show help                                                        |
@@ -228,6 +229,26 @@ Downloads your Bandcamp purchases and organizes them into a music library.
 
 `flac`, `mp3-320`, `mp3-v0`, `wav`, `aiff-lossless`, `aac-hi`, `alac`,
 `vorbis`.
+
+### Progress bars
+
+While downloads run, each in-flight transfer gets its own line showing
+percentage, transferred/total size, and throughput:
+
+```
+Boards of Canada - Music Has the... [===============]  57.2% 3.4 MB/6.0 MB 913.7 KB/s
+Aphex Twin - Selected Ambie...    [        ===      ] 2.3 MB 630.5 KB/s
+```
+
+A line appears as its download starts and is removed when it finishes, so the
+display stays the height of the number of active downloads — which with
+`--jobs N` is up to `N`. Sizes come from the album metadata Bandcamp already
+returned, so no extra request is made to measure them; when a size is missing
+the bar shows transferred bytes and a moving indicator instead of a percentage.
+
+Bars are drawn only when stderr is a terminal. Redirecting output to a file or
+a log gives plain text with no cursor movement, which keeps piped runs and CI
+output clean. Pass `--no-progress` to turn them off in a terminal too.
 
 ---
 
