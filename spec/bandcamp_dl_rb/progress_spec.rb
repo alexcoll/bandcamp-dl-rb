@@ -282,6 +282,36 @@ RSpec.describe BandcampDlRb::Progress do
       end
     end
 
+    context 'with a wide terminal' do
+      let(:terminal) { FakeTerminal.new(width: 120) }
+      let(:bar_width) { line[/\[(.*)\]/, 1].length }
+
+      context 'with a name too long to fit' do
+        let(:handle) { progress.start(long_name, total: 4096) }
+        let(:long_name) do
+          'Godspeed You! Black Emperor - F♯A♯∞ (Live at the 4th A McGill University 2001)'
+        end
+
+        before { handle.advance(2048) }
+
+        # The name is what the user is reading, so it keeps the columns and the
+        # bar stays as narrow as it is allowed to.
+        it 'spends them on the name first' do
+          expect(bar_width).to eq(described_class::MIN_BAR_WIDTH)
+        end
+      end
+
+      context 'with a name that fits easily' do
+        let(:handle) { progress.start('Kid A', total: 4096) }
+
+        before { handle.advance(2048) }
+
+        it 'widens the bar with the rest' do
+          expect(bar_width).to eq(described_class::MAX_BAR_WIDTH)
+        end
+      end
+    end
+
     context 'with a tiny terminal' do
       let(:terminal) { FakeTerminal.new(width: 20) }
       let(:handle) { progress.start('A Band Name - An Album Title That Goes On', total: 4096) }

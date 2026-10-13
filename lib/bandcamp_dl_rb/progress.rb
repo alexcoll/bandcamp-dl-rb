@@ -25,7 +25,10 @@ module BandcampDlRb
     MIN_WIDTH = 20
     DEFAULT_WIDTH = 80
     MIN_BAR_WIDTH = 8
-    MAX_BAR_WIDTH = 30
+    # The bar only has to read as "how far along", so it takes a narrow slice
+    # and the album name gets the rest. A wide bar spent columns the name could
+    # have used.
+    MAX_BAR_WIDTH = 16
     LABEL_RESERVE = 12
     ELLIPSIS = '...'
     SPINNER_PERIOD = 0.9
@@ -185,15 +188,18 @@ module BandcampDlRb
 
     def line_for(entry)
       tail = tail_for(entry)
-      # " [] " is the two brackets plus their padding; whatever is left is
-      # split between the label and the bar, label first so a truncated album
-      # name still reads as "Artist - Alb...".
+      # " [] " is the two brackets plus their padding. The name gets the space
+      # first: it is truncated only once the bar has taken its minimum, so a
+      # long album title stays legible rather than losing columns to a bar that
+      # only has to read as "how far along". The bar then expands with whatever
+      # the name did not need, up to a width that still looks deliberate.
       spare = terminal_width - tail.length - 4
       line = if spare < LABEL_RESERVE
                tail
              else
-               bar_width = clamp(spare / 2, MIN_BAR_WIDTH, MAX_BAR_WIDTH)
-               "#{truncate(entry.label, spare - bar_width)} [#{bar_for(entry, bar_width)}] #{tail}"
+               label = truncate(entry.label, spare - MIN_BAR_WIDTH)
+               bar_width = clamp(spare - label.length, MIN_BAR_WIDTH, MAX_BAR_WIDTH)
+               "#{label} [#{bar_for(entry, bar_width)}] #{tail}"
              end
       # A narrow enough terminal leaves the tail itself overflowing, and a line
       # wider than the terminal wraps and corrupts the block below it.
