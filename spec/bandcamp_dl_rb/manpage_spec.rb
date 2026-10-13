@@ -3,8 +3,9 @@
 require_relative '../spec_helper'
 
 RSpec.describe 'man/bandcamp_dl_rb.1' do
+  subject(:manpage) { source.gsub('\\', '') }
+
   let(:source) { File.read(File.expand_path('../../man/bandcamp_dl_rb.1', __dir__)) }
-  let(:manpage) { source.gsub('\\', '') }
 
   let(:cli_help) { BandcampDlRb::CLI.parse_args([])[:parser].to_s }
 
@@ -14,37 +15,48 @@ RSpec.describe 'man/bandcamp_dl_rb.1' do
     cli_help.scan(/^\s*(?:-[A-Za-z], )?--([a-z][a-z0-9-]*)/).flatten.uniq.map { |name| "--#{name}" }
   end
 
+  let(:options_section) { manpage[/\.SH OPTIONS(.*?)\.SH FORMATS/m, 1] }
+
   let(:manpage_option_flags) do
-    options_section = manpage[/\.SH OPTIONS(.*?)\.SH FORMATS/m, 1]
     options_section.scan(/--([a-z][a-z0-9-]*)/).flatten.uniq.map { |name| "--#{name}" }
   end
 
-  it 'exists with a NAME section' do
-    expect(manpage).to include('.TH BANDCAMP_DL_RB 1')
-    expect(manpage).to include('.SH NAME')
-  end
+  describe 'the header' do
+    it 'names the manual page' do
+      expect(manpage).to include('.TH BANDCAMP_DL_RB 1')
+    end
 
-  it 'documents every CLI long option' do
-    cli_long_options.each do |flag|
-      expect(manpage).to include(flag), "manpage is missing #{flag}"
+    it 'has a NAME section' do
+      expect(manpage).to include('.SH NAME')
     end
   end
 
-  it 'does not document options the CLI does not have' do
-    extras = manpage_option_flags - cli_long_options
-    expect(extras).to be_empty, "manpage documents unknown options: #{extras.join(', ')}"
-  end
-
-  it 'documents the required sections' do
-    required = ['SYNOPSIS', 'DESCRIPTION', 'AUTHENTICATION', 'OPTIONS',
-                'FORMATS', 'EXAMPLES', 'FILES', 'EXIT STATUS']
-    required.each do |section|
-      expect(manpage).to include(".SH #{section}")
+  describe 'the section layout' do
+    # One assertion rather than one example per section: these are all the
+    # same question ("did a section go missing?") asked about a fixed list.
+    it 'carries every required section' do
+      required = %w[NAME SYNOPSIS DESCRIPTION AUTHENTICATION OPTIONS
+                    FORMATS EXAMPLES FILES] + ['EXIT STATUS']
+      expect(required - manpage.scan(/^\.SH ([A-Z][A-Z ]*)/).flatten).to be_empty
     end
   end
 
-  it 'is included in the built gem' do
-    spec = Gem::Specification.load('bandcamp-dl-rb.gemspec')
-    expect(spec.files).to include('man/bandcamp_dl_rb.1')
+  describe 'option coverage' do
+    it 'documents every CLI long option' do
+      missing = cli_long_options.reject { |flag| manpage.include?(flag) }
+      expect(missing).to be_empty, "manpage is missing #{missing.join(', ')}"
+    end
+
+    it 'documents no options the CLI lacks' do
+      extras = manpage_option_flags - cli_long_options
+      expect(extras).to be_empty, "manpage documents unknown options: #{extras.join(', ')}"
+    end
+  end
+
+  describe 'packaging' do
+    it 'ships in the built gem' do
+      spec = Gem::Specification.load(File.expand_path('../../bandcamp-dl-rb.gemspec', __dir__))
+      expect(spec.files).to include('man/bandcamp_dl_rb.1')
+    end
   end
 end

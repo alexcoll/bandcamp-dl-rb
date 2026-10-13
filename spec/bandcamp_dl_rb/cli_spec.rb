@@ -3,846 +3,832 @@
 require_relative '../spec_helper'
 
 RSpec.describe BandcampDlRb::CLI do
+  subject(:cli) { described_class.new(out: out, err: err) }
+
+  let(:out) { StringIO.new }
+  let(:err) { StringIO.new }
+
+  include BandcampFixtures
+
+  include_context 'with a temporary directory'
+
   describe '.parse_args' do
-    it 'parses library and username' do
-      options = described_class.parse_args(['--library', '/mnt/music', 'myuser'])
-      expect(options[:library]).to eq('/mnt/music')
-      expect(options[:username]).to eq('myuser')
+    subject(:options) { described_class.parse_args(args) }
+
+    let(:args) { ['--library', '/mnt/music', 'myuser'] }
+
+    context 'with a username' do
+      it 'sets the library' do
+        expect(options).to include(library: '/mnt/music')
+      end
+
+      it 'sets the username' do
+        expect(options).to include(username: 'myuser')
+      end
+
+      it 'defaults the format to flac' do
+        expect(options).to include(format: 'flac')
+      end
+
+      it 'defaults the browser to auto' do
+        expect(options).to include(browser: 'auto')
+      end
+
+      it 'defaults the page size' do
+        expect(options).to include(page_size: BandcampDlRb::DEFAULT_PAGE_SIZE)
+      end
+
+      it 'defaults jobs to 1' do
+        expect(options).to include(jobs: 1)
+      end
+
+      it 'defaults unzip to true' do
+        expect(options).to include(unzip: true)
+      end
+
+      it 'defaults filter to nil' do
+        expect(options).to include(filter: nil)
+      end
+
+      it 'defaults urls to an empty array' do
+        expect(options).to include(urls: [])
+      end
+
+      it 'defaults items to nil' do
+        expect(options).to include(items: nil)
+      end
+
+      it 'defaults include_hidden to false' do
+        expect(options).to include(include_hidden: false)
+      end
     end
 
-    it 'defaults format to flac' do
-      options = described_class.parse_args(['--library', '/x', 'u'])
-      expect(options[:format]).to eq('flac')
+    context 'with a format' do
+      let(:args) { ['--library', '/x', '--format', 'wav', 'u'] }
+
+      it { is_expected.to include(format: 'wav') }
     end
 
-    it 'accepts a custom format' do
-      options = described_class.parse_args(['--library', '/x', '--format', 'wav', 'u'])
-      expect(options[:format]).to eq('wav')
+    context 'with --include-hidden' do
+      let(:args) { ['--library', '/x', '--include-hidden', 'u'] }
+
+      it { is_expected.to include(include_hidden: true) }
     end
 
-    it 'parses include-hidden flag' do
-      options = described_class.parse_args(['--library', '/x', '--include-hidden', 'u'])
-      expect(options[:include_hidden]).to eq(true)
+    context 'with --no-unzip' do
+      let(:args) { ['--library', '/x', '--no-unzip', 'u'] }
+
+      it { is_expected.to include(unzip: false) }
     end
 
-    it 'parses since/until dates' do
-      options = described_class.parse_args(['--library', '/x', '--since', '2024-01-01', 'u'])
-      expect(options[:since]).to eq(Date.new(2024, 1, 1))
+    context 'with --since' do
+      let(:args) { ['--library', '/x', '--since', '2024-01-01', 'u'] }
+
+      it { is_expected.to include(since: Date.new(2024, 1, 1)) }
     end
 
-    it 'parses the browser option' do
-      options = described_class.parse_args(['--library', '/x', '--browser', 'firefox', 'u'])
-      expect(options[:browser]).to eq('firefox')
+    context 'with --until' do
+      let(:args) { ['--library', '/x', '--until', '2024-12-31', 'u'] }
+
+      it { is_expected.to include(until_date: Date.new(2024, 12, 31)) }
     end
 
-    it 'accepts safari as a browser option' do
-      options = described_class.parse_args(['--library', '/x', '--browser', 'safari', 'u'])
-      expect(options[:browser]).to eq('safari')
+    context 'with --browser' do
+      let(:args) { ['--library', '/x', '--browser', 'firefox', 'u'] }
+
+      it { is_expected.to include(browser: 'firefox') }
     end
 
-    it 'defaults browser to auto' do
-      options = described_class.parse_args(['--library', '/x', 'u'])
-      expect(options[:browser]).to eq('auto')
+    context 'with --page-size' do
+      let(:args) { ['--library', '/x', '--page-size', '250', 'u'] }
+
+      it { is_expected.to include(page_size: 250) }
     end
 
-    it 'defaults page size' do
-      options = described_class.parse_args(['--library', '/x', 'u'])
-      expect(options[:page_size]).to eq(BandcampDlRb::DEFAULT_PAGE_SIZE)
+    context 'with --jobs' do
+      let(:args) { ['--library', '/x', '--jobs', '3', 'u'] }
+
+      it { is_expected.to include(jobs: 3) }
     end
 
-    it 'accepts a custom page size' do
-      options = described_class.parse_args(['--library', '/x', '--page-size', '250', 'u'])
-      expect(options[:page_size]).to eq(250)
+    context 'with --filter' do
+      let(:args) { ['--library', '/x', '--filter', 'amd', 'u'] }
+
+      it { is_expected.to include(filter: 'amd') }
     end
 
-    it 'parses a single --url' do
-      options = described_class.parse_args([
-                                             '--library', '/x', '--url', 'https://radiohead.bandcamp.com/album/in-rainbows'
-                                           ])
-      expect(options[:urls]).to eq(['https://radiohead.bandcamp.com/album/in-rainbows'])
-      expect(options[:username]).to be_nil
+    context 'with --cookie-file' do
+      let(:args) { ['--library', '/x', '--cookie-file', '/tmp/cookies.txt', 'u'] }
+
+      it { is_expected.to include(cookie_file: '/tmp/cookies.txt') }
     end
 
-    it 'parses multiple --url flags' do
-      options = described_class.parse_args([
-                                             '--library', '/x',
-                                             '--url', 'https://radiohead.bandcamp.com/album/in-rainbows',
-                                             '--url', 'https://radiohead.bandcamp.com/album/ok-computer'
-                                           ])
-      expect(options[:urls]).to eq([
-                                     'https://radiohead.bandcamp.com/album/in-rainbows',
-                                     'https://radiohead.bandcamp.com/album/ok-computer'
-                                   ])
+    context 'with --entry-encoding' do
+      let(:args) { ['--library', '/x', '--entry-encoding', 'CP932', 'u'] }
+
+      it { is_expected.to include(entry_encoding: 'CP932') }
     end
 
-    it 'parses --items with comma-separated IDs' do
-      options = described_class.parse_args(['--library', '/x', '--items', 'a100,t200', 'myuser'])
-      expect(options[:items]).to eq('a100,t200')
-      expect(options[:username]).to eq('myuser')
+    context 'with --items' do
+      let(:args) { ['--library', '/x', '--items', 'a100,t200', 'myuser'] }
+
+      it { is_expected.to include(items: 'a100,t200') }
     end
 
-    it 'still picks up a positional username in URL mode' do
-      args = [
-        '--library', '/x',
-        '--url', 'https://radiohead.bandcamp.com/album/in-rainbows',
-        'testuser'
-      ]
-      options = described_class.parse_args(args)
-      expect(options[:username]).to eq('testuser')
+    context 'with a single --url' do
+      let(:args) { ['--library', '/x', '--url', 'https://radiohead.bandcamp.com/album/in-rainbows'] }
+
+      it 'collects the url' do
+        expect(options).to include(urls: ['https://radiohead.bandcamp.com/album/in-rainbows'])
+      end
+
+      it 'leaves the username unset' do
+        expect(options).to include(username: nil)
+      end
     end
 
-    it 'defaults urls to empty array and items to nil' do
-      options = described_class.parse_args(['--library', '/x', 'u'])
-      expect(options[:urls]).to eq([])
-      expect(options[:items]).to be_nil
+    context 'with several --url flags' do
+      let(:args) do
+        ['--library', '/x',
+         '--url', 'https://radiohead.bandcamp.com/album/in-rainbows',
+         '--url', 'https://radiohead.bandcamp.com/album/ok-computer']
+      end
+
+      it 'collects both urls in order' do
+        expect(options[:urls]).to eq(
+          ['https://radiohead.bandcamp.com/album/in-rainbows',
+           'https://radiohead.bandcamp.com/album/ok-computer']
+        )
+      end
     end
 
-    it 'defaults jobs to 1' do
-      options = described_class.parse_args(['--library', '/x', 'u'])
-      expect(options[:jobs]).to eq(1)
+    context 'with --url and a positional username' do
+      let(:args) { ['--library', '/x', '--url', 'https://radiohead.bandcamp.com/album/in-rainbows', 'testuser'] }
+
+      it { is_expected.to include(username: 'testuser') }
     end
 
-    it 'parses --jobs' do
-      options = described_class.parse_args(['--library', '/x', '--jobs', '3', 'u'])
-      expect(options[:jobs]).to eq(3)
-    end
+    context 'with --help' do
+      let(:args) { ['--help'] }
 
-    it 'defaults filter to nil' do
-      options = described_class.parse_args(['--library', '/x', 'u'])
-      expect(options[:filter]).to be_nil
-    end
+      # .parse_args builds its own CLI writing to $stdout, so the banner is
+      # captured through this instance instead.
+      it 'exits successfully' do
+        expect { cli.parse_args(args) }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      end
 
-    it 'parses --filter' do
-      options = described_class.parse_args(['--library', '/x', '--filter', 'amd', 'u'])
-      expect(options[:filter]).to eq('amd')
-    end
-
-    it 'defaults unzip to true' do
-      options = described_class.parse_args(['--library', '/x', 'u'])
-      expect(options[:unzip]).to be true
-    end
-
-    it 'parses --no-unzip' do
-      options = described_class.parse_args(['--library', '/x', '--no-unzip', 'u'])
-      expect(options[:unzip]).to be false
-    end
-
-    it 'parses --temp-dir' do
-      options = described_class.parse_args(['--library', '/x', '--temp-dir', '/dev/shm', 'u'])
-      expect(options[:temp_dir]).to eq('/dev/shm')
+      it 'prints the usage banner' do
+        expect { cli.parse_args(args) }.to raise_error(SystemExit)
+        expect(out.string).to include('Usage:')
+      end
     end
   end
 
   describe '.run' do
-    it 'returns exit code 1 when username and library are missing' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run([], out: out, err: err)
-      expect(code).to eq(1)
+    subject(:exit_code) { described_class.run(args, out: out, err: err) }
+
+    let(:args) { [] }
+
+    context 'with no arguments' do
+      it { is_expected.to eq(1) }
     end
 
-    it 'returns exit code 1 when library is missing' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run(['myuser'], out: out, err: err)
-      expect(code).to eq(1)
+    context 'with a username but no library' do
+      let(:args) { ['myuser'] }
+
+      it { is_expected.to eq(1) }
     end
 
-    it 'returns exit code 1 when --items is used without username' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run(['--library', '/x', '--items', 'a100'], out: out, err: err)
-      expect(code).to eq(1)
+    context 'with --items but no username' do
+      let(:args) { ['--library', '/x', '--items', 'a100'] }
+
+      it { is_expected.to eq(1) }
     end
 
-    it 'returns exit code 1 when --filter is used without username' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run(['--library', '/x', '--filter', 'amd'], out: out, err: err)
-      expect(code).to eq(1)
+    context 'with --filter but no username' do
+      let(:args) { ['--library', '/x', '--filter', 'amd'] }
+
+      it { is_expected.to eq(1) }
     end
 
-    it 'prints the version and exits 0 with --version' do
-      out = StringIO.new
-      expect { described_class.run(['--version'], out: out, err: StringIO.new) }
-        .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
-      expect(out.string).to eq("bandcamp_dl_rb #{BandcampDlRb::VERSION}\n")
+    context 'with --jobs above the cap' do
+      let(:args) { ['--library', '/x', '--jobs', '17', 'u'] }
+
+      it { is_expected.to eq(1) }
+
+      it 'explains the allowed range' do
+        exit_code
+        expect(err.string).to include('--jobs must be between 1 and 16')
+      end
     end
 
-    it 'prints the version with -V' do
-      out = StringIO.new
-      expect { described_class.run(['-V'], out: out, err: StringIO.new) }
-        .to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
-      expect(out.string).to include("bandcamp_dl_rb #{BandcampDlRb::VERSION}")
+    context 'with --jobs below 1' do
+      let(:args) { ['--library', '/x', '--jobs', '0', 'u'] }
+
+      it { is_expected.to eq(1) }
     end
 
-    it 'returns exit code 1 when --jobs is out of range' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run(['--library', '/x', '--jobs', '17', 'u'], out: out, err: err)
-      expect(code).to eq(1)
-      expect(err.string).to include('--jobs must be between 1 and 16')
+    context 'with --page-size above the cap' do
+      let(:args) { ['--library', '/x', '--page-size', '9999', 'u'] }
+
+      it { is_expected.to eq(1) }
+
+      it 'explains the allowed range' do
+        exit_code
+        expect(err.string).to include('--page-size must be between 1 and 500')
+      end
     end
 
-    it 'returns exit code 1 when --jobs is less than 1' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run(['--library', '/x', '--jobs', '0', 'u'], out: out, err: err)
-      expect(code).to eq(1)
+    context 'with --page-size below 1' do
+      let(:args) { ['--library', '/x', '--page-size', '0', 'u'] }
+
+      it { is_expected.to eq(1) }
     end
 
-    it 'returns exit code 1 when --page-size is out of range' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run(['--library', '/x', '--page-size', '9999', 'u'], out: out, err: err)
-      expect(code).to eq(1)
-      expect(err.string).to include('--page-size must be between 1 and 500')
+    context 'when no identity cookie can be found' do
+      let(:args) { ['--library', dest, 'testuser'] }
+
+      before { allow(BandcampDlRb::CookieExtractor).to receive(:get_identity_cookie).and_return(nil) }
+
+      it { is_expected.to eq(1) }
+
+      it 'says so' do
+        exit_code
+        expect(err.string).to include('Could not find Bandcamp identity cookie')
+      end
+
+      it 'tells the user how to fix it' do
+        exit_code
+        expect(err.string).to include('To fix this, try one of:')
+      end
     end
 
-    it 'returns exit code 1 when --page-size is less than 1' do
-      err = StringIO.new
-      out = StringIO.new
-      code = described_class.run(['--library', '/x', '--page-size', '0', 'u'], out: out, err: err)
-      expect(code).to eq(1)
+    context 'with --version' do
+      let(:args) { ['--version'] }
+
+      it 'exits successfully' do
+        expect { exit_code }.to raise_error(SystemExit) { |e| expect(e.status).to eq(0) }
+      end
+
+      it 'prints the version' do
+        expect { exit_code }.to raise_error(SystemExit)
+        expect(out.string).to eq("bandcamp_dl_rb #{BandcampDlRb::VERSION}\n")
+      end
     end
   end
 
-  describe 'integration' do
-    around do |example|
-      Dir.mktmpdir do |dir|
-        @library = dir
-        example.run
+  describe '#authenticate' do
+    subject(:identity) { cli.send(:authenticate, options) }
+
+    let(:options) { { browser: 'auto', cookie_file: nil } }
+
+    context 'when a cookie can be read' do
+      before { allow(BandcampDlRb::CookieExtractor).to receive(:get_identity_cookie).and_return('test-id') }
+
+      it { is_expected.to eq('test-id') }
+    end
+
+    context 'when no cookie can be read' do
+      before { allow(BandcampDlRb::CookieExtractor).to receive(:get_identity_cookie).and_return(nil) }
+
+      it { is_expected.to be_nil }
+
+      it 'reports the failure' do
+        identity
+        expect(err.string).to include('Could not find Bandcamp identity cookie.')
       end
+
+      it 'offers next steps' do
+        identity
+        expect(err.string).to include('To fix this, try one of:')
+      end
+    end
+  end
+
+  # End-to-end runs through CLI#run, Client and the real HTTP stack, with only
+  # Bandcamp's own endpoints stubbed. These are the tests that would catch a
+  # wiring mistake between the option parser, the client and the downloader.
+  describe 'end-to-end runs' do
+    let(:profile_url) { 'https://bandcamp.com/testuser' }
+    let(:collection_page) { pagedata_page(collection_blob(collection_items)) }
+    let(:collection_items) do
+      [
+        sale_item(id: 100, artist: 'Radiohead', title: 'Kid A'),
+        sale_item(id: 200, artist: 'Radiohead', title: 'Amnesiac'),
+        sale_item(id: 300, artist: 'Aphex Twin', title: 'Windowlicker', type: 't')
+      ]
     end
 
     before do
       allow(BandcampDlRb::CookieExtractor).to receive(:get_identity_cookie).and_return('test-identity')
+      stub_request(:get, profile_url).to_return(body: collection_page)
     end
 
-    def success_response(body)
-      Class.new do
-        define_method(:body) { body }
-
-        def is_a?(_klass)
-          true
-        end
-      end.new
-    end
-
-    def stub_http(&router)
-      allow(Net::HTTP).to receive(:start) do |_host, _port, **_opts, &block|
-        http = double('http')
-        allow(http).to receive(:request) { |req| router.call(req) }
-        block.call(http)
-      end
-    end
-
-    def capture_stderr
-      prev = $stderr
-      io = StringIO.new
-      $stderr = io
-      yield
-      io.string
-    ensure
-      $stderr = prev
-    end
-
+    # BandcampDlRb.log writes with `warn`, so a faithful capture has to take
+    # over $stderr as well as the stream passed in as err:.
     def run_cli(argv)
-      err = StringIO.new
-      stderr = capture_stderr do
-        @exit_code = described_class.run(argv, out: StringIO.new, err: err)
+      err_io = StringIO.new
+      warnings = StringIO.new
+      previous = $stderr
+      begin
+        $stderr = warnings
+        code = described_class.run(argv, out: StringIO.new, err: err_io)
+      ensure
+        $stderr = previous
       end
-      @err_string = stderr
+      { exit_code: code, output: warnings.string + err_io.string }
     end
 
-    describe 'URL mode end to end' do
+    def recording_downloader(result = :downloaded)
+      downloaded = []
+      allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_args, **_kwargs|
+        downloaded << { key: "#{item['sale_item_type']}#{item['sale_item_id']}", item: item }
+        result
+      end
+      downloaded
+    end
+
+    context 'when running in URL mode' do
       let(:album_url) { 'https://radiohead.bandcamp.com/album/in-rainbows' }
-      let(:tralbum_html) do
-        tralbum = { 'artist' => 'Radiohead', 'current' => { 'title' => 'In Rainbows' },
-                    'id' => 2_162_872_411, 'item_type' => 'album' }
-        "<div data-tralbum='#{CGI.escapeHTML(JSON.generate(tralbum))}'></div>"
-      end
-      let(:collection_html) do
-        blob = {
-          'collection_count' => 1,
-          'fan_data' => { 'fan_id' => 123 },
-          'item_cache' => {
-            'collection' => {
-              'p403398974' => {
-                'sale_item_type' => 'p', 'sale_item_id' => 403_398_974,
-                'tralbum_id' => 2_162_872_411,
-                'band_name' => 'Radiohead', 'item_title' => 'In Rainbows', 'tralbum_type' => 'a'
-              }
-            },
-            'hidden' => {}
-          },
-          'collection_data' => {
-            'item_count' => 1, 'last_token' => nil,
-            'redownload_urls' => {
-              'p403398974' => 'https://bandcamp.com/download/album?id=2162872411'
-            }
-          },
-          'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
-        }
-        %(<div id="pagedata" data-blob="#{CGI.escapeHTML(JSON.generate(blob))}"></div>)
+      let(:owned) do
+        [sale_item(id: 403_398_974, artist: 'Radiohead', title: 'In Rainbows', type: 'p',
+                   'tralbum_id' => 2_162_872_411, 'tralbum_type' => 'a')]
       end
 
       before do
-        stub_http do |req|
-          if req.uri.to_s.include?('radiohead.bandcamp.com/album/in-rainbows')
-            success_response(tralbum_html)
-          elsif req.uri.to_s.include?('bandcamp.com/testuser')
-            success_response(collection_html)
-          else
-            raise "Unexpected request: #{req.uri}"
-          end
-        end
+        stub_request(:get, profile_url).to_return(body: pagedata_page(collection_blob(owned)))
+        stub_request(:get, album_url)
+          .to_return(body: tralbum_page(artist: 'Radiohead', title: 'In Rainbows', id: 2_162_872_411))
       end
 
-      it 'downloads a single album from a URL through the full run' do
-        downloaded = nil
-        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, _lib, _fmt, **_kw|
-          downloaded = item
-          :downloaded
-        end
-
-        run_cli(['--library', @library, '--url', album_url, 'testuser'])
-
-        expect(@exit_code).to eq(0)
-        expect(@err_string).to include('Found 1 downloadable item(s).')
-        expect(@err_string).to include('Downloaded:  1')
-        expect(downloaded['band_name']).to eq('Radiohead')
-        expect(downloaded['item_title']).to eq('In Rainbows')
-        expect(downloaded['tralbum_id']).to eq(2_162_872_411)
-        expect(downloaded['redownload_url']).to eq('https://bandcamp.com/download/album?id=2162872411')
-
-        state_file = File.join(@library, '.bandcamp-sync.json')
-        expect(File).to exist(state_file)
-        expect(JSON.parse(File.read(state_file))['item_ids']).to eq(['p403398974'])
+      it 'downloads the album behind the url' do
+        downloaded = recording_downloader
+        run_cli(['--library', dest, '--url', album_url, 'testuser'])
+        expect(downloaded.map { |d| d[:item]['item_title'] }).to eq(['In Rainbows'])
       end
 
-      it 'exits with code 1 when the album is not in the collection' do
-        allow(BandcampDlRb::Downloader).to receive(:download_album)
+      it 'attaches the redownload url' do
+        downloaded = recording_downloader
+        run_cli(['--library', dest, '--url', album_url, 'testuser'])
+        expect(downloaded.first[:item]['redownload_url']).to eq(redownload_url('p403398974'))
+      end
 
-        tralbum = { 'artist' => 'Somebody', 'current' => { 'title' => 'Not Owned' },
-                    'id' => 999, 'item_type' => 'album' }
-        not_owned_html = "<div data-tralbum='#{CGI.escapeHTML(JSON.generate(tralbum))}'></div>"
-        stub_http do |req|
-          if req.uri.to_s.include?('somebody.bandcamp.com')
-            success_response(not_owned_html)
-          elsif req.uri.to_s.include?('bandcamp.com/testuser')
-            success_response(collection_html)
-          else
-            raise "Unexpected request: #{req.uri}"
-          end
+      it 'reports success' do
+        recording_downloader
+        expect(run_cli(['--library', dest, '--url', album_url, 'testuser'])[:exit_code]).to eq(0)
+      end
+
+      it 'records the synced item ids' do
+        recording_downloader
+        run_cli(['--library', dest, '--url', album_url, 'testuser'])
+        state = JSON.parse(File.read(File.join(dest, '.bandcamp-sync.json')))
+        expect(state['item_ids']).to eq(['p403398974'])
+      end
+
+      context 'when the album is not in the collection' do
+        let(:unowned_url) { 'https://somebody.bandcamp.com/album/not-owned' }
+
+        before do
+          stub_request(:get, unowned_url)
+            .to_return(body: tralbum_page(artist: 'Somebody', title: 'Not Owned', id: 999))
         end
 
-        run_cli(['--library', @library, '--url', 'https://somebody.bandcamp.com/album/not-owned', 'testuser'])
+        it 'exits with 1' do
+          recording_downloader
+          expect(run_cli(['--library', dest, '--url', unowned_url, 'testuser'])[:exit_code]).to eq(1)
+        end
 
-        expect(@exit_code).to eq(1)
-        expect(@err_string).to include('Not found in collection or no download available')
-        expect(@err_string).to include('No downloadable items found.')
+        it 'says why' do
+          recording_downloader
+          expect(run_cli(['--library', dest, '--url', unowned_url, 'testuser'])[:output])
+            .to include('Not found in collection or no download available')
+        end
       end
     end
 
-    describe 'items mode end to end' do
-      let(:collection_html) do
-        blob = {
-          'collection_count' => 3,
-          'fan_data' => { 'fan_id' => 123 },
-          'item_cache' => {
-            'collection' => {
-              'a100' => {
-                'sale_item_type' => 'a', 'sale_item_id' => 100,
-                'band_name' => 'Radiohead', 'item_title' => 'Kid A', 'tralbum_type' => 'a'
-              },
-              'a200' => {
-                'sale_item_type' => 'a', 'sale_item_id' => 200,
-                'band_name' => 'Radiohead', 'item_title' => 'Amnesiac', 'tralbum_type' => 'a'
-              },
-              't300' => {
-                'sale_item_type' => 't', 'sale_item_id' => 300,
-                'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker', 'tralbum_type' => 't'
-              }
-            },
-            'hidden' => {}
-          },
-          'collection_data' => {
-            'item_count' => 3, 'last_token' => nil,
-            'redownload_urls' => {
-              'a100' => 'https://bandcamp.com/download/album?id=100',
-              'a200' => 'https://bandcamp.com/download/album?id=200',
-              't300' => 'https://bandcamp.com/download/track?id=300'
-            }
-          },
-          'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
-        }
-        %(<div id="pagedata" data-blob="#{CGI.escapeHTML(JSON.generate(blob))}"></div>)
+    context 'when running in items mode' do
+      it 'downloads only the requested ids' do
+        downloaded = recording_downloader
+        run_cli(['--library', dest, '--items', 'a100,t300', 'testuser'])
+        expect(downloaded.map { |d| d[:key] }).to contain_exactly('a100', 't300')
       end
 
-      before do
-        stub_http do |req|
-          raise "Unexpected request: #{req.uri}" unless req.uri.to_s.include?('bandcamp.com/testuser')
-
-          success_response(collection_html)
-        end
+      it 'reports the match count' do
+        recording_downloader
+        expect(run_cli(['--library', dest, '--items', 'a100,t300', 'testuser'])[:output])
+          .to include('Matched 2 item(s) from collection.')
       end
 
-      it 'downloads only the requested items by ID' do
-        downloaded_keys = []
-        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, _lib, _fmt, **_kw|
-          downloaded_keys << "#{item['sale_item_type']}#{item['sale_item_id']}"
+      it 'passes unzip: false with --no-unzip' do
+        received = nil
+        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_a, **kwargs|
+          received = [item['sale_item_id'], kwargs[:unzip]]
           :downloaded
         end
-
-        run_cli(['--library', @library, '--items', 'a100,t300', 'testuser'])
-
-        expect(@exit_code).to eq(0)
-        expect(@err_string).to include('Matched 2 item(s) from collection.')
-        expect(@err_string).to include('Downloaded:  2')
-        expect(downloaded_keys).to contain_exactly('a100', 't300')
+        run_cli(['--library', dest, '--no-unzip', '--items', 'a100', 'testuser'])
+        expect(received).to eq([100, false])
       end
 
-      it 'downloads nothing when requested IDs do not match the collection' do
-        allow(BandcampDlRb::Downloader).to receive(:download_album)
-
-        run_cli(['--library', @library, '--items', 'a999', 'testuser'])
-
-        expect(@exit_code).to eq(1)
-        expect(@err_string).to include('No matching items found for: a999')
-        expect(@err_string).to include('Available item IDs: a100, a200, t300')
+      it 'reports failure when nothing matches' do
+        recording_downloader
+        expect(run_cli(['--library', dest, '--items', 'a999', 'testuser'])[:exit_code]).to eq(1)
       end
 
-      it 'downloads the whole collection in parallel with --jobs' do
-        keys = Queue.new
-        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_args, **_kw|
-          keys << "#{item['sale_item_type']}#{item['sale_item_id']}"
-          :downloaded
-        end
-
-        run_cli(['--library', @library, '--jobs', '2', 'testuser'])
-
-        expect(@exit_code).to eq(0)
-        expect(@err_string).to include('Downloaded:  3')
-        downloaded = []
-        downloaded << keys.pop until keys.empty?
-        expect(downloaded).to contain_exactly('a100', 'a200', 't300')
-      end
-
-      it 'passes unzip: false to download_album with --no-unzip' do
-        received = []
-        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, _lib, _fmt, **kw|
-          received << [item['sale_item_id'], kw[:unzip]]
-          :downloaded
-        end
-
-        run_cli(['--library', @library, '--no-unzip', '--items', 'a100', 'testuser'])
-
-        expect(@exit_code).to eq(0)
-        expect(received).to eq([[100, false]])
+      it 'lists the available ids' do
+        recording_downloader
+        expect(run_cli(['--library', dest, '--items', 'a999', 'testuser'])[:output])
+          .to include('Available item IDs: a100, a200, t300')
       end
     end
 
-    describe 'filter mode end to end' do
-      let(:collection_html) do
-        blob = {
-          'collection_count' => 3,
-          'fan_data' => { 'fan_id' => 123 },
-          'item_cache' => {
-            'collection' => {
-              'a100' => {
-                'sale_item_type' => 'a', 'sale_item_id' => 100,
-                'band_name' => 'Radiohead', 'item_title' => 'Kid A', 'tralbum_type' => 'a'
-              },
-              'a200' => {
-                'sale_item_type' => 'a', 'sale_item_id' => 200,
-                'band_name' => 'Radiohead', 'item_title' => 'Amnesiac', 'tralbum_type' => 'a'
-              },
-              't300' => {
-                'sale_item_type' => 't', 'sale_item_id' => 300,
-                'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker', 'tralbum_type' => 't'
-              }
-            },
-            'hidden' => {}
-          },
-          'collection_data' => {
-            'item_count' => 3, 'last_token' => nil,
-            'redownload_urls' => {
-              'a100' => 'https://bandcamp.com/download/album?id=100',
-              'a200' => 'https://bandcamp.com/download/album?id=200',
-              't300' => 'https://bandcamp.com/download/track?id=300'
-            }
-          },
-          'hidden_data' => { 'item_count' => 0, 'last_token' => nil }
-        }
-        %(<div id="pagedata" data-blob="#{CGI.escapeHTML(JSON.generate(blob))}"></div>)
+    context 'when running in filter mode' do
+      it 'downloads only the matching items' do
+        downloaded = recording_downloader
+        run_cli(['--library', dest, '--filter', 'radiohead', 'testuser'])
+        expect(downloaded.map { |d| d[:key] }).to contain_exactly('a100', 'a200')
       end
 
-      before do
-        stub_http do |req|
-          raise "Unexpected request: #{req.uri}" unless req.uri.to_s.include?('bandcamp.com/testuser')
+      # A filter matching nothing exits 1 -- already covered by the items-mode
+      # example above. Only the malformed-regex path is unique here.
+      it 'exits with 1 on an invalid regex' do
+        recording_downloader
+        expect(run_cli(['--library', dest, '--filter', '[', 'testuser'])[:exit_code]).to eq(1)
+      end
+    end
 
-          success_response(collection_html)
-        end
+    context 'with no mode flags' do
+      it 'downloads the whole collection serially' do
+        downloaded = recording_downloader
+        run_cli(['--library', dest, 'testuser'])
+        expect(downloaded.length).to eq(3)
       end
 
-      it 'downloads only items matching a regex' do
-        downloaded_keys = []
-        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, _lib, _fmt, **_kw|
-          downloaded_keys << "#{item['sale_item_type']}#{item['sale_item_id']}"
+      it 'reports the download count' do
+        recording_downloader
+        expect(run_cli(['--library', dest, 'testuser'])[:output]).to include('Downloaded:  3')
+      end
+
+      it 'records the synced item ids' do
+        recording_downloader
+        run_cli(['--library', dest, 'testuser'])
+        state = JSON.parse(File.read(File.join(dest, '.bandcamp-sync.json')))
+        expect(state['item_ids']).to contain_exactly('a100', 'a200', 't300')
+      end
+
+      it 'downloads in parallel with --jobs' do
+        downloaded = Queue.new
+        allow(BandcampDlRb::Downloader).to receive(:download_album) do |_client, item, *_a, **_kw|
+          downloaded << "#{item['sale_item_type']}#{item['sale_item_id']}"
           :downloaded
         end
-
-        run_cli(['--library', @library, '--filter', 'radiohead', 'testuser'])
-
-        expect(@exit_code).to eq(0)
-        expect(@err_string).to include('Matched 2 item(s) from collection.')
-        expect(@err_string).to include('Downloaded:  2')
-        expect(downloaded_keys).to contain_exactly('a100', 'a200')
+        run_cli(['--library', dest, '--jobs', '2', 'testuser'])
+        expect(downloaded.size).to eq(3)
       end
 
-      it 'downloads nothing when the filter matches nothing' do
-        allow(BandcampDlRb::Downloader).to receive(:download_album)
+      context 'when the collection is empty' do
+        let(:collection_page) { pagedata_page(collection_blob([])) }
 
-        run_cli(['--library', @library, '--filter', 'zzzz', 'testuser'])
+        it 'exits with 1' do
+          expect(run_cli(['--library', dest, 'testuser'])[:exit_code]).to eq(1)
+        end
 
-        expect(@exit_code).to eq(1)
-        expect(@err_string).to include('No matching items found for: zzzz')
+        it 'says nothing was found' do
+          expect(run_cli(['--library', dest, 'testuser'])[:output]).to include('No downloadable items found')
+        end
+      end
+    end
+
+    context 'with --dry-run' do
+      let(:downloads_page) do
+        pagedata_page(
+          'download_items' => [{ 'downloads' => { 'flac' => { 'url' => 'https://bcbits/a.zip',
+                                                              'size_mb' => '10MB' } } }]
+        )
+      end
+
+      before { stub_request(:get, 'https://bandcamp.com/redownload/a100').to_return(body: downloads_page) }
+
+      it 'exits successfully' do
+        expect(run_cli(['--library', dest, '--dry-run', '--items', 'a100', 'testuser'])[:exit_code]).to eq(0)
+      end
+
+      it 'prints a dry run banner' do
+        expect(run_cli(['--library', dest, '--dry-run', '--items', 'a100', 'testuser'])[:output])
+          .to include('--- Dry Run ---')
+      end
+
+      it 'downloads nothing' do
+        recording_downloader
+        run_cli(['--library', dest, '--dry-run', '--items', 'a100', 'testuser'])
+        expect(BandcampDlRb::Downloader).not_to have_received(:download_album)
+      end
+    end
+
+    context 'when a download raises in parallel mode' do
+      it 'still exits successfully' do
+        allow(BandcampDlRb::Downloader).to receive(:download_album).and_raise(StandardError, 'boom')
+        expect(run_cli(['--library', dest, '--jobs', '2', '--items', 'a100,t300', 'testuser'])[:exit_code]).to eq(0)
+      end
+
+      it 'logs the error' do
+        allow(BandcampDlRb::Downloader).to receive(:download_album).and_raise(StandardError, 'boom')
+        output = run_cli(['--library', dest, '--jobs', '2', '--items', 'a100,t300', 'testuser'])[:output]
+        expect(output).to include('Error downloading', 'boom')
+      end
+
+      it 'counts the items as failed' do
+        allow(BandcampDlRb::Downloader).to receive(:download_album).and_raise(StandardError, 'boom')
+        output = run_cli(['--library', dest, '--jobs', '2', '--items', 'a100,t300', 'testuser'])[:output]
+        expect(output).to include('Failed:      2')
       end
     end
   end
 
   describe '#print_dry_run' do
-    it 'prints each item with its ID, size, and the total size' do
-      cli = described_class.new(out: StringIO.new, err: StringIO.new)
-      items = {
+    subject(:printed) { cli.send(:print_dry_run, client, items, 'flac') }
+
+    let(:client) { instance_double(BandcampDlRb::Client) }
+    let(:items) do
+      {
         'a1' => { 'band_name' => 'Radiohead', 'item_title' => 'Kid A',
                   'redownload_url' => 'https://bandcamp.com/redownload/1' },
         'a2' => { 'band_name' => 'Radiohead', 'item_title' => 'Amnesiac',
                   'redownload_url' => 'https://bandcamp.com/redownload/2' }
       }
-      allow(cli).to receive(:download_size_for).and_return(1_200_000, 800_000)
-
-      expect { cli.send(:print_dry_run, double('client'), items, 'flac') }.to output(
-        <<~OUT
-          \n--- Dry Run ---
-            [a1] Radiohead - Kid A (1.1 MB)
-            [a2] Radiohead - Amnesiac (781.2 KB)
-
-          Total: 2 items, 1.9 MB would be downloaded
-        OUT
-      ).to_stderr
     end
 
-    it 'marks unknown sizes and sums only known ones' do
-      cli = described_class.new(out: StringIO.new, err: StringIO.new)
-      items = {
-        'a1' => { 'band_name' => 'Artist', 'item_title' => 'Album',
-                  'redownload_url' => 'https://bandcamp.com/redownload/1' },
-        'a2' => { 'band_name' => 'Artist', 'item_title' => 'Mystery',
-                  'redownload_url' => 'https://bandcamp.com/redownload/2' }
-      }
-      allow(cli).to receive(:download_size_for).and_return(1_200_000, nil)
+    context 'when every size is known' do
+      before do
+        allow(cli).to receive(:download_size_for).and_return(1_200_000, 800_000)
+        allow(BandcampDlRb).to receive(:log)
+      end
 
-      expect { cli.send(:print_dry_run, double('client'), items, 'flac') }.to output(
-        <<~OUT
-          \n--- Dry Run ---
-            [a1] Artist - Album (1.1 MB)
-            [a2] Artist - Mystery (unknown size)
+      it 'lists the first item with its size' do
+        printed
+        expect(BandcampDlRb).to have_received(:log).with('  [a1] Radiohead - Kid A (1.1 MB)')
+      end
 
-          Total: 2 items, 1.1 MB (+1 unknown) would be downloaded
-        OUT
-      ).to_stderr
+      it 'lists the second item with its size' do
+        printed
+        expect(BandcampDlRb).to have_received(:log).with('  [a2] Radiohead - Amnesiac (781.2 KB)')
+      end
+
+      it 'sums the sizes into a total' do
+        printed
+        expect(BandcampDlRb).to have_received(:log).with(/\nTotal: 2 items, 1\.9 MB would be downloaded/)
+      end
     end
 
-    it 'shows track IDs correctly' do
-      cli = described_class.new(out: StringIO.new, err: StringIO.new)
-      items = {
-        't500' => { 'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker',
-                    'redownload_url' => 'https://bandcamp.com/redownload/5' }
-      }
-      allow(cli).to receive(:download_size_for).and_return(5_000_000)
+    context 'when a size is unknown' do
+      before do
+        allow(cli).to receive(:download_size_for).and_return(1_200_000, nil)
+        allow(BandcampDlRb).to receive(:log)
+      end
 
-      expect { cli.send(:print_dry_run, double('client'), items, 'flac') }.to output(
-        <<~OUT
-          \n--- Dry Run ---
-            [t500] Aphex Twin - Windowlicker (4.8 MB)
+      it 'marks the item as unknown size' do
+        printed
+        expect(BandcampDlRb).to have_received(:log).with('  [a2] Radiohead - Amnesiac (unknown size)')
+      end
 
-          Total: 1 items, 4.8 MB would be downloaded
-        OUT
-      ).to_stderr
+      it 'counts the unknown sizes in the total' do
+        printed
+        expect(BandcampDlRb).to have_received(:log).with(/Total: 2 items, 1\.1 MB \(\+1 unknown\)/)
+      end
+    end
+
+    context 'with a track item' do
+      let(:items) do
+        {
+          't500' => { 'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker',
+                      'redownload_url' => 'https://bandcamp.com/redownload/5' }
+        }
+      end
+
+      before do
+        allow(cli).to receive(:download_size_for).and_return(5_000_000)
+        allow(BandcampDlRb).to receive(:log)
+      end
+
+      it 'keys the line on the collection id' do
+        printed
+        expect(BandcampDlRb).to have_received(:log).with('  [t500] Aphex Twin - Windowlicker (4.8 MB)')
+      end
     end
   end
 
   describe '#resolve_url_items' do
-    let(:cli) { described_class.new(out: StringIO.new, err: StringIO.new) }
-    let(:client) { instance_double(BandcampDlRb::Client) }
+    subject(:items) { cli.send(:resolve_url_items, client, options) }
+
+    let(:client) { BandcampDlRb::Client.new('ident') }
+    let(:album_url) { 'https://radiohead.bandcamp.com/album/in-rainbows' }
+    let(:profile_url) { 'https://bandcamp.com/testuser' }
+    let(:options) { { urls: [album_url], username: 'testuser', include_hidden: false } }
+    let(:owned) do
+      [sale_item(id: 403_398_974, artist: 'Radiohead', title: 'In Rainbows', type: 'p',
+                 'tralbum_id' => 2_162_872_411, 'tralbum_type' => 'a')]
+    end
 
     before do
-      allow(client).to receive(:get_html).and_return('<html></html>')
-      allow(client).to receive(:parse_tralbum).and_return(
-        'band_name' => 'Radiohead',
-        'item_title' => 'In Rainbows',
-        'tralbum_id' => 2_162_872_411,
-        'tralbum_type' => 'a'
-      )
-      allow(client).to receive(:get_collection).and_return(
-        'p403398974' => {
-          'sale_item_type' => 'p',
-          'sale_item_id' => 403_398_974,
-          'tralbum_id' => 2_162_872_411,
-          'tralbum_type' => 'a',
-          'band_name' => 'Radiohead',
-          'item_title' => 'In Rainbows',
-          'redownload_url' => 'https://bandcamp.com/download/album?id=2162872411'
-        }
-      )
-      allow(client).to receive(:find_item_in_collection).and_return(
-        'sale_item_type' => 'p',
-        'sale_item_id' => 403_398_974,
-        'tralbum_id' => 2_162_872_411,
-        'tralbum_type' => 'a',
-        'band_name' => 'Radiohead',
-        'item_title' => 'In Rainbows',
-        'redownload_url' => 'https://bandcamp.com/download/album?id=2162872411'
-      )
+      stub_request(:get, profile_url).to_return(body: pagedata_page(collection_blob(owned)))
+      stub_request(:get, album_url)
+        .to_return(body: tralbum_page(artist: 'Radiohead', title: 'In Rainbows', id: 2_162_872_411))
     end
 
-    it 'resolves a URL to a collection item' do
-      options = {
-        urls: ['https://radiohead.bandcamp.com/album/in-rainbows'],
-        username: 'testuser',
-        include_hidden: false
-      }
-      items = cli.send(:resolve_url_items, client, options)
-      expect(items.length).to eq(1)
-      expect(items.values.first['band_name']).to eq('Radiohead')
-    end
-
-    it 'returns empty hash when page fetch fails' do
-      allow(client).to receive(:get_html).and_return(nil)
-      options = {
-        urls: ['https://radiohead.bandcamp.com/album/in-rainbows'],
-        username: 'testuser',
-        include_hidden: false
-      }
-      items = cli.send(:resolve_url_items, client, options)
-      expect(items).to eq({})
-    end
-
-    it 'returns empty hash when tralbum parsing fails' do
-      allow(client).to receive(:parse_tralbum).and_return(nil)
-      options = {
-        urls: ['https://radiohead.bandcamp.com/album/in-rainbows'],
-        username: 'testuser',
-        include_hidden: false
-      }
-      items = cli.send(:resolve_url_items, client, options)
-      expect(items).to eq({})
-    end
-
-    it 'returns empty hash when item not found in collection' do
-      allow(client).to receive(:find_item_in_collection).and_return(nil)
-      options = {
-        urls: ['https://radiohead.bandcamp.com/album/in-rainbows'],
-        username: 'testuser',
-        include_hidden: false
-      }
-      items = cli.send(:resolve_url_items, client, options)
-      expect(items).to eq({})
-    end
-
-    it 'returns empty hash when no username is provided' do
-      options = {
-        urls: ['https://radiohead.bandcamp.com/album/in-rainbows'],
-        username: nil,
-        include_hidden: false
-      }
-      items = cli.send(:resolve_url_items, client, options)
-      expect(items).to eq({})
-    end
-
-    it 'resolves multiple URLs' do
-      call_count = 0
-      allow(client).to receive(:get_html) do
-        call_count += 1
-        '<html></html>'
-      end
-      allow(client).to receive(:parse_tralbum) do
-        { 'band_name' => "Artist #{call_count}", 'item_title' => "Album #{call_count}",
-          'tralbum_id' => call_count, 'tralbum_type' => 'a' }
-      end
-      allow(client).to receive(:find_item_in_collection) do |_items, tralbum|
-        { 'sale_item_type' => 'p',
-          'sale_item_id' => 400_000_000 + tralbum['tralbum_id'],
-          'tralbum_id' => tralbum['tralbum_id'],
-          'tralbum_type' => tralbum['tralbum_type'],
-          'band_name' => tralbum['band_name'],
-          'item_title' => tralbum['item_title'],
-          'redownload_url' => "https://bandcamp.com/download/#{tralbum['tralbum_id']}" }
+    context 'when the album is owned' do
+      it 'resolves one item' do
+        expect(items.length).to eq(1)
       end
 
-      options = {
-        urls: [
-          'https://radiohead.bandcamp.com/album/in-rainbows',
-          'https://aphextwin.bandcamp.com/album/syro'
-        ],
-        username: 'testuser',
-        include_hidden: false
-      }
-      items = cli.send(:resolve_url_items, client, options)
-      expect(items.length).to eq(2)
+      it 'carries the artist through' do
+        expect(items.values.first['band_name']).to eq('Radiohead')
+      end
+
+      it 'carries the download url through' do
+        expect(items.values.first['redownload_url']).to eq(redownload_url('p403398974'))
+      end
     end
 
-    it 'fetches the collection once for multiple URLs' do
-      allow(client).to receive(:get_html).and_return('<html></html>')
-      allow(client).to receive(:parse_tralbum).and_return(
-        'band_name' => 'Radiohead', 'item_title' => 'In Rainbows',
-        'tralbum_id' => 1, 'tralbum_type' => 'a'
-      )
-      allow(client).to receive(:find_item_in_collection).and_return(nil)
-      expect(client).to receive(:get_collection).once.and_return({})
+    context 'when the album is not owned' do
+      let(:owned) { [] }
 
-      cli.send(:resolve_url_items, client, {
-                 urls: %w[
-                   https://radiohead.bandcamp.com/album/in-rainbows
-                   https://radiohead.bandcamp.com/album/ok-computer
-                   https://radiohead.bandcamp.com/album/kid-a
-                 ],
-                 username: 'testuser',
-                 include_hidden: false
-               })
+      it { is_expected.to eq({}) }
     end
 
-    it 'refetches when the include_hidden flag differs' do
-      allow(client).to receive(:get_html).and_return('<html></html>')
-      allow(client).to receive(:parse_tralbum).and_return(
-        'band_name' => 'Radiohead', 'item_title' => 'In Rainbows',
-        'tralbum_id' => 1, 'tralbum_type' => 'a'
-      )
-      allow(client).to receive(:find_item_in_collection).and_return(nil)
-      expect(client).to receive(:get_collection).twice.and_return({})
+    context 'when the page cannot be fetched' do
+      before { stub_request(:get, album_url).to_return(status: 404) }
 
-      cli.send(:resolve_url_items, client, {
-                 urls: %w[
-                   https://radiohead.bandcamp.com/album/in-rainbows
-                   https://radiohead.bandcamp.com/album/ok-computer
-                 ],
-                 username: 'testuser',
-                 include_hidden: true
-               })
-      cli.send(:resolve_url_items, client, {
-                 urls: ['https://radiohead.bandcamp.com/album/kid-a'],
-                 username: 'testuser',
-                 include_hidden: false
-               })
+      it { is_expected.to eq({}) }
+    end
+
+    context 'when the tralbum cannot be parsed' do
+      before { stub_request(:get, album_url).to_return(body: '<html>no data here</html>') }
+
+      it { is_expected.to eq({}) }
+    end
+
+    context 'without a username' do
+      let(:options) { { urls: [album_url], username: nil, include_hidden: false } }
+
+      it { is_expected.to eq({}) }
+    end
+
+    context 'with several urls' do
+      let(:second_url) { 'https://aphextwin.bandcamp.com/track/windowlicker' }
+      let(:options) { { urls: [album_url, second_url], username: 'testuser', include_hidden: false } }
+
+      before do
+        stub_request(:get, second_url)
+          .to_return(body: tralbum_page(artist: 'Aphex Twin', title: 'Windowlicker', id: 777, item_type: 'track'))
+      end
+
+      it 'resolves both' do
+        expect(items.length).to eq(1)
+      end
+
+      it 'fetches the collection only once' do
+        items
+        expect(a_request(:get, profile_url)).to have_been_made.once
+      end
+    end
+
+    context 'with a differing include_hidden flag' do
+      it 'refetches the collection' do
+        cli.send(:resolve_url_items, client, { urls: [album_url], username: 'testuser', include_hidden: true })
+        cli.send(:resolve_url_items, client, { urls: [album_url], username: 'testuser', include_hidden: false })
+        expect(a_request(:get, profile_url)).to have_been_made.twice
+      end
     end
   end
 
   describe '#filter_collection_items' do
-    let(:cli) { described_class.new(out: StringIO.new, err: StringIO.new) }
-    let(:client) { instance_double(BandcampDlRb::Client) }
+    subject(:items) { cli.send(:filter_collection_items, client, options) }
 
-    before do
-      allow(client).to receive(:get_collection).and_return(
-        'a100' => {
-          'sale_item_type' => 'a', 'sale_item_id' => 100,
-          'band_name' => 'Radiohead', 'item_title' => 'Kid A',
-          'redownload_url' => 'https://bandcamp.com/redownload/1'
-        },
-        'a200' => {
-          'sale_item_type' => 'a', 'sale_item_id' => 200,
-          'band_name' => 'Radiohead', 'item_title' => 'Amnesiac',
-          'redownload_url' => 'https://bandcamp.com/redownload/2'
-        },
-        't300' => {
-          'sale_item_type' => 't', 'sale_item_id' => 300,
-          'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker',
-          'redownload_url' => 'https://bandcamp.com/redownload/3'
-        }
+    let(:client) { BandcampDlRb::Client.new('ident') }
+    let(:profile_url) { 'https://bandcamp.com/testuser' }
+    let(:options) { { username: 'testuser', items: 'a100,t300', include_hidden: false } }
+    let(:collection_page) do
+      pagedata_page(
+        collection_blob(
+          [
+            sale_item(id: 100, artist: 'Radiohead', title: 'Kid A'),
+            sale_item(id: 200, artist: 'Radiohead', title: 'Amnesiac'),
+            sale_item(id: 300, artist: 'Aphex Twin', title: 'Windowlicker', type: 't')
+          ]
+        )
       )
-      allow(client).to receive(:filter_by_ids) do |items, ids|
-        ids_str = ids.is_a?(Array) ? ids.join(',') : ids
-        keys = ids_str.split(',').map(&:strip)
-        items.slice(*keys)
+    end
+
+    before { stub_request(:get, profile_url).to_return(body: collection_page) }
+
+    context 'with ids the collection holds' do
+      it 'returns just those' do
+        expect(items.keys).to contain_exactly('a100', 't300')
       end
     end
 
-    it 'filters collection by item IDs' do
-      options = { username: 'testuser', items: 'a100,t300', include_hidden: false }
-      items = cli.send(:filter_collection_items, client, options)
-      expect(items.keys).to contain_exactly('a100', 't300')
+    context 'with an id the collection does not hold' do
+      let(:options) { { username: 'testuser', items: 'a999', include_hidden: false } }
+
+      it { is_expected.to be_nil }
     end
 
-    it 'returns nil when no items match' do
-      options = { username: 'testuser', items: 'a999', include_hidden: false }
-      items = cli.send(:filter_collection_items, client, options)
-      expect(items).to be_nil
-    end
+    context 'with an empty collection' do
+      let(:collection_page) { pagedata_page(collection_blob([])) }
 
-    it 'returns nil when collection is empty' do
-      allow(client).to receive(:get_collection).and_return({})
-      options = { username: 'testuser', items: 'a100', include_hidden: false }
-      items = cli.send(:filter_collection_items, client, options)
-      expect(items).to be_nil
+      it { is_expected.to be_nil }
     end
   end
 
   describe '#filter_collection_by_regex' do
-    let(:cli) { described_class.new(out: StringIO.new, err: StringIO.new) }
-    let(:client) { instance_double(BandcampDlRb::Client) }
+    subject(:items) { cli.send(:filter_collection_by_regex, client, options) }
 
-    before do
-      allow(client).to receive(:get_collection).and_return(
-        'a100' => {
-          'sale_item_type' => 'a', 'sale_item_id' => 100,
-          'band_name' => 'Radiohead', 'item_title' => 'Kid A'
-        },
-        'a200' => {
-          'sale_item_type' => 'a', 'sale_item_id' => 200,
-          'band_name' => 'Radiohead', 'item_title' => 'Amnesiac'
-        },
-        't300' => {
-          'sale_item_type' => 't', 'sale_item_id' => 300,
-          'band_name' => 'Aphex Twin', 'item_title' => 'Windowlicker'
-        }
+    let(:client) { BandcampDlRb::Client.new('ident') }
+    let(:profile_url) { 'https://bandcamp.com/testuser' }
+    let(:options) { { username: 'testuser', filter: 'amnesiac', include_hidden: false } }
+    let(:collection_page) do
+      pagedata_page(
+        collection_blob(
+          [
+            sale_item(id: 100, artist: 'Radiohead', title: 'Kid A'),
+            sale_item(id: 200, artist: 'Radiohead', title: 'Amnesiac'),
+            sale_item(id: 300, artist: 'Aphex Twin', title: 'Windowlicker', type: 't')
+          ]
+        )
       )
-      allow(client).to receive(:filter_collection) do |items, pattern|
-        items.select { |_key, item| [item['band_name'], item['item_title']].join(' ').match?(pattern) }
+    end
+
+    before { stub_request(:get, profile_url).to_return(body: collection_page) }
+
+    context 'with a title pattern' do
+      it { expect(items.keys).to eq(['a200']) }
+    end
+
+    context 'with an artist pattern' do
+      let(:options) { { username: 'testuser', filter: 'aphex', include_hidden: false } }
+
+      it { expect(items.keys).to eq(['t300']) }
+    end
+
+    context 'with a pattern nothing matches' do
+      let(:options) { { username: 'testuser', filter: 'zzzz', include_hidden: false } }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'with an empty collection' do
+      let(:collection_page) { pagedata_page(collection_blob([])) }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'with an invalid regex' do
+      let(:options) { { username: 'testuser', filter: '[', include_hidden: false } }
+
+      it { is_expected.to be_nil }
+    end
+  end
+
+  describe '#download_size_for' do
+    subject(:size) { cli.send(:download_size_for, client, item, 'flac') }
+
+    let(:client) { BandcampDlRb::Client.new('ident') }
+    let(:item) { { 'redownload_url' => 'https://bandcamp.com/redownload/1' } }
+
+    context 'when the download url cannot be resolved' do
+      before { allow(BandcampDlRb::Downloader).to receive(:get_download_url).and_return(nil) }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when the page advertises a size' do
+      before do
+        allow(BandcampDlRb::Downloader).to receive(:get_download_url)
+          .and_return(url: 'https://bcbits/file.flac', format: 'flac', size_mb: '10MB')
+      end
+
+      it 'reads it from size_bytes' do
+        allow(BandcampDlRb::Downloader).to receive(:size_bytes).and_return(10_485_760)
+        expect(size).to eq(10_485_760)
+      end
+
+      it 'does not probe the file' do
+        allow(BandcampDlRb::Downloader).to receive(:size_bytes).and_return(10_485_760)
+        expect(BandcampDlRb::Downloader).not_to receive(:download_size)
+        size
       end
     end
 
-    it 'filters the collection by regex' do
-      options = { username: 'testuser', filter: 'amnesiac', include_hidden: false }
-      items = cli.send(:filter_collection_by_regex, client, options)
-      expect(items.keys).to eq(['a200'])
-    end
+    context 'when the page advertises no size' do
+      before do
+        allow(BandcampDlRb::Downloader).to receive(:get_download_url)
+          .and_return(url: 'https://bcbits/file.flac', format: 'flac')
+      end
 
-    it 'matches against artist or title' do
-      options = { username: 'testuser', filter: 'aphex', include_hidden: false }
-      items = cli.send(:filter_collection_by_regex, client, options)
-      expect(items.keys).to eq(['t300'])
-    end
-
-    it 'returns nil when no items match' do
-      options = { username: 'testuser', filter: 'zzzz', include_hidden: false }
-      items = cli.send(:filter_collection_by_regex, client, options)
-      expect(items).to be_nil
-    end
-
-    it 'returns nil when collection is empty' do
-      allow(client).to receive(:get_collection).and_return({})
-      options = { username: 'testuser', filter: 'kid', include_hidden: false }
-      items = cli.send(:filter_collection_by_regex, client, options)
-      expect(items).to be_nil
-    end
-
-    it 'returns nil on an invalid regex' do
-      err = StringIO.new
-      invalid_cli = described_class.new(out: StringIO.new, err: err)
-      options = { username: 'testuser', filter: '[', include_hidden: false }
-      items = invalid_cli.send(:filter_collection_by_regex, client, options)
-      expect(items).to be_nil
+      it 'probes the file instead' do
+        allow(BandcampDlRb::Downloader).to receive(:size_bytes).and_return(nil)
+        allow(BandcampDlRb::Downloader).to receive(:download_size).and_return(5000)
+        expect(size).to eq(5000)
+      end
     end
   end
 end
