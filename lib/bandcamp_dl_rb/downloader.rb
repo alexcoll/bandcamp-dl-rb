@@ -280,11 +280,11 @@ module BandcampDlRb
     end
 
     # Creates a private temp directory for a download's working files. When
-    # +temp_dir+ is given (e.g. a RAM-backed/tmpfs mount), it is used as the
-    # base instead of the system temporary directory; the directory is created
-    # on demand so callers do not have to pre-create it. Accepts the base either
-    # positionally or via keyword (+temp_dir:+, +tmp_dir:+, +temp_directory:+,
-    # +base:+, +base_dir:+, or +scratch_dir:+).
+    # +temp_dir+ is given, it is used as the base instead of the default cache
+    # directory; the directory is created on demand so callers do not have to
+    # pre-create it. Accepts the base either positionally or via keyword
+    # (+temp_dir:+, +tmp_dir:+, +temp_directory:+, +base:+, +base_dir:+, or
+    # +scratch_dir:+).
     def self.temp_dir_for(item = nil, temp_dir = nil, **options)
       candidates = [
         temp_dir, item,
@@ -292,10 +292,26 @@ module BandcampDlRb
         options[:base], options[:base_dir], options[:scratch_dir],
         options['temp_dir'], options['tmp_dir'], options['scratch_dir']
       ]
-      base = candidates.find { |candidate| candidate.is_a?(String) } || Dir.tmpdir
+      base = candidates.find { |candidate| candidate.is_a?(String) } || default_temp_base
       FileUtils.mkdir_p(base)
       Dir.mktmpdir('bc', base)
     end
+
+    # Returns a persistent cache directory on the real filesystem (not tmpfs)
+    # for temporary download files. Uses XDG_CACHE_HOME if set, otherwise
+    # ~/.cache/bandcamp-dl-rb.
+    def self.default_temp_base
+      cache_home = ENV.fetch('XDG_CACHE_HOME', nil)
+      if cache_home && !cache_home.empty?
+        File.join(cache_home, 'bandcamp-dl-rb')
+      else
+        File.join(Dir.home, '.cache', 'bandcamp-dl-rb')
+      end
+    end
+    singleton_class.alias_method(:default_temp_dir, :default_temp_base)
+    singleton_class.alias_method(:default_temp_directory, :default_temp_base)
+    singleton_class.alias_method(:default_cache_dir, :default_temp_base)
+    singleton_class.alias_method(:default_cache_base, :default_temp_base)
 
     def self.download_to_temp(client, download, tmp_dir)
       FileUtils.mkdir_p(tmp_dir)
