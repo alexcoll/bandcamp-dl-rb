@@ -40,7 +40,10 @@ jobs:
           bundler-cache: true
 
       - name: Run RSpec
-        run: bundle exec rspec
+        # Parity specs run as their own jobs below. They check artifacts
+        # against the parser and are identical across Ruby versions, so
+        # running them here would repeat the same failure three times.
+        run: bundle exec rspec --tag ~parity
 
   manpage:
     name: Manpage parity
