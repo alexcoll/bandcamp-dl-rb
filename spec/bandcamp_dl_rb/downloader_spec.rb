@@ -409,6 +409,161 @@ RSpec.describe BandcampDlRb::Downloader do
         expect(Dir.glob(File.join(described_class.default_temp_base, 'bc*'))).to eq(bc_temp_dirs_before)
       end
     end
+
+    describe 'progress reporting' do
+      # instance_double, so a rename of Progress#start or its keywords fails
+      # these examples instead of silently passing against a stale stub.
+      let(:progress) { instance_double(BandcampDlRb::Progress) }
+      let(:handle) { instance_double(BandcampDlRb::Progress::Handle) }
+
+      before do
+        allow(BandcampDlRb::Progress).to receive(:current).and_return(progress)
+        allow(progress).to receive(:start).and_return(handle)
+        # BandcampDlRb.log routes through the renderer so log lines cannot land
+        # inside the bar block.
+        allow(progress).to receive(:log)
+        allow(handle).to receive(:advance)
+        allow(handle).to receive(:reset)
+        allow(handle).to receive(:finish)
+      end
+
+      it 'labels the bar with the album and sizes it from the reported size' do
+        outcome
+        expect(progress).to have_received(:start).with('Radiohead - Kid A', total: 10 * 1024 * 1024)
+      end
+
+      it 'starts the bar without a total when no size is reported' do
+        allow(client).to receive(:get_pagedata).and_return(
+          'download_items' => [{ 'downloads' => { 'flac' => { 'url' => download_url } } }]
+        )
+
+        outcome
+        expect(progress).to have_received(:start).with('Radiohead - Kid A', total: nil)
+      end
+
+      # Probing the size would cost an extra HTTP request per album, and the
+      # pagedata already carries one for free.
+      it 'does not spend a request measuring the size' do
+        allow(described_class).to receive(:download_size)
+        outcome
+        expect(described_class).not_to have_received(:download_size)
+      end
+
+      it 'clears the bar once the transfer is over, so the line does not linger' do
+        outcome
+        expect(handle).to have_received(:finish)
+      end
+
+      it 'clears the bar even when the download fails' do
+        stub_request(:get, download_url).to_return(status: 500)
+        allow(described_class).to receive(:sleep)
+
+        outcome
+        expect(handle).to have_received(:finish)
+      end
+
+      it 'reports the bytes of the served archive' do
+        outcome
+        expect(handle).to have_received(:advance).with(archive.bytesize).at_least(:once)
+      end
+
+      # A retry restarts the transfer, so the bar must rewind rather than
+      # accumulate both attempts and overshoot the total.
+      context 'when the first attempt fails' do
+        before do
+          stub_request(:get, download_url)
+            .to_return(status: 500).then
+            .to_return(status: 200, body: archive)
+          allow(described_class).to receive(:sleep)
+        end
+
+        it 'rewinds the bar at the start of the retry' do
+          outcome
+          expect(handle).to have_received(:reset).at_least(:once)
+        end
+
+        it 'reports only the bytes of the successful attempt' do
+          reported = []
+          allow(handle).to receive(:advance) { |bytes| reported << bytes }
+
+          outcome
+          expect(reported.sum).to eq(archive.bytesize)
+        end
+      end
+    end
+
+    context 'with cover art advertised' do
+      let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
+      let(:pagedata) do
+        {
+          'download_items' => [
+            {
+              'downloads' => { 'flac' => { 'url' => download_url, 'size_mb' => '1MB' } },
+              'art_id' => 12_345
+            }
+          ]
+        }
+      end
+
+      before { stub_request(:get, 'https://f4.bcbits.com/img/a12345_10.jpg').to_return(body: 'coverdata') }
+
+      it 'saves cover.jpg from the CDN' do
+        outcome
+        expect(File.read(File.join(album_dir, 'cover.jpg'))).to eq('coverdata')
+      end
+    end
+
+    context 'with a cover already on disk' do
+      let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
+      let(:pagedata) do
+        {
+          'download_items' => [
+            {
+              'downloads' => { 'flac' => { 'url' => download_url, 'size_mb' => '1MB' } },
+              'art_id' => 12_345
+            }
+          ]
+        }
+      end
+
+      before do
+        FileUtils.mkdir_p(album_dir)
+        File.write(File.join(album_dir, 'cover.jpg'), 'existing-cover')
+        stub_request(:get, 'https://f4.bcbits.com/img/a12345_10.jpg').to_return(body: 'new-cover')
+      end
+
+      it 'leaves the existing cover alone' do
+        outcome
+        expect(File.read(File.join(album_dir, 'cover.jpg'))).to eq('existing-cover')
+      end
+    end
+
+    context 'with release metadata' do
+      let(:archive) { zip_bytes('01 Track.flac' => 'audio') }
+      let(:pagedata) do
+        {
+          'album_release_date' => '1 Oct 2000',
+          'download_items' => [
+            {
+              'downloads' => { 'flac' => { 'url' => download_url, 'size_mb' => '1MB' } },
+              'trackinfo' => [{ 'title' => 'Everything In Its Right Place', 'duration' => 251, 'track_num' => 1 }]
+            }
+          ]
+        }
+      end
+
+      it 'writes album.json with the release date' do
+        outcome
+        info = JSON.parse(File.read(File.join(album_dir, 'album.json')))
+        expect(info['release_date']).to eq('1 Oct 2000')
+      end
+
+      it 'writes album.json with the tracklist' do
+        outcome
+        info = JSON.parse(File.read(File.join(album_dir, 'album.json')))
+        expect(info['tracklist'].first['title']).to eq('Everything In Its Right Place')
+      end
+    end
   end
 
   describe '.temp_dir_for' do
@@ -1004,6 +1159,337 @@ RSpec.describe BandcampDlRb::Downloader do
       it 'keeps the tracks that did extract' do
         placed
         expect(File.read(File.join(album_dir, '01 Track.flac'))).to eq('audio')
+      end
+    end
+  end
+
+  describe '.write_stream without a progress handle' do
+    subject(:result) { described_class.write_stream(response, File.join(dest, 'out.flac')) }
+
+    include_context 'with a temporary directory'
+
+    # write_stream's job is to batch up the chunks Net::HTTP yields; the
+    # chunking itself is Net::HTTP's. A stubbed HTTP response hands over the
+    # whole body as one chunk, so a double is what actually exercises the
+    # batching this method exists for.
+    def response_yielding(chunks)
+      instance_double(Net::HTTPResponse).tap do |resp|
+        allow(resp).to receive(:read_body) { |&block| chunks.each(&block) }
+      end
+    end
+
+    context 'with a body smaller than the write buffer' do
+      let(:response) { response_yielding(%w[chunk-one- chunk-two- chunk-three]) }
+
+      it { is_expected.to be true }
+
+      it 'writes every chunk in order' do
+        result
+        expect(File.read(File.join(dest, 'out.flac'))).to eq('chunk-one-chunk-two-chunk-three')
+      end
+    end
+
+    context 'with a body larger than the write buffer' do
+      # 64KB of chunks over a 1MB buffer, so the buffer is flushed 32 times.
+      let(:response) { response_yielding(Array.new(64) { 'x' * (16 * 1024) }) }
+      let(:expected) { 'x' * (64 * 16 * 1024) }
+
+      it 'reassembles the whole body' do
+        result
+        expect(File.read(File.join(dest, 'out.flac'))).to eq(expected)
+      end
+
+      it 'writes the right number of bytes' do
+        result
+        expect(File.size(File.join(dest, 'out.flac'))).to eq(expected.bytesize)
+      end
+    end
+
+    context 'with an empty body' do
+      let(:response) { response_yielding([]) }
+
+      it 'creates an empty file' do
+        result
+        expect(File.size(File.join(dest, 'out.flac'))).to eq(0)
+      end
+    end
+  end
+
+  describe '.download_file' do
+    subject(:result) { described_class.download_file(client, url, File.join(dest, 'out.flac'), max_retries: 3) }
+
+    include_context 'with a temporary directory'
+
+    let(:url) { 'https://bcbits.com/track.flac' }
+    let(:out) { File.join(dest, 'out.flac') }
+
+    let(:delays) { [] }
+
+    context 'when the server answers directly' do
+      before { stub_request(:get, url).to_return(status: 200, body: 'FLA-CONTENT') }
+
+      it { is_expected.to be true }
+
+      it 'writes the body to the destination' do
+        result
+        expect(File.read(out)).to eq('FLA-CONTENT')
+      end
+    end
+
+    context 'when the server redirects' do
+      let(:final_url) { 'https://final.example/file.flac' }
+
+      before do
+        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
+        stub_request(:get, final_url).to_return(status: 200, body: 'FLA-CONTENT')
+      end
+
+      it { is_expected.to be true }
+
+      it 'writes the body from the final hop' do
+        result
+        expect(File.read(out)).to eq('FLA-CONTENT')
+      end
+    end
+
+    context 'when the redirect stays on an allowlisted host' do
+      let(:final_url) { 'https://d1.bcbits.com/final.zip' }
+
+      before do
+        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
+        stub_request(:get, final_url).to_return(status: 200, body: 'FLA-CONTENT')
+      end
+
+      it 'keeps the cookie on the redirect' do
+        result
+        expect(a_request(:get, final_url).with(headers: { 'Cookie' => 'identity=ident' })).to have_been_made
+      end
+    end
+
+    context 'when the redirect leaves the allowlist' do
+      let(:final_url) { 'https://example.com/file.flac' }
+
+      before do
+        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
+        stub_request(:get, final_url).to_return(status: 200, body: 'FLA-CONTENT')
+      end
+
+      it 'drops the cookie on the redirect' do
+        result
+        expect(a_request(:get, final_url).with { |req| !req.headers.key?('Cookie') }).to have_been_made
+      end
+    end
+
+    context 'when every attempt fails' do
+      before do
+        allow(described_class).to receive(:stream_download).and_return(nil)
+        allow(described_class).to receive(:sleep)
+      end
+
+      it { is_expected.to be false }
+
+      it 'makes one attempt per retry' do
+        result
+        expect(described_class).to have_received(:stream_download).exactly(3).times
+      end
+
+      it 'backs off exponentially' do
+        allow(described_class).to receive(:sleep) { |delay| delays << delay }
+        result
+
+        expect(delays).to eq([1, 2, 4])
+      end
+    end
+
+    describe 'progress reporting' do
+      subject(:download) do
+        described_class.download_file(client, url, out, max_retries: 3, progress: handle)
+      end
+
+      let(:handle) { instance_double(BandcampDlRb::Progress::Handle) }
+      let(:reported) { [] }
+
+      before do
+        allow(handle).to receive(:advance) { |bytes| reported << bytes }
+        allow(handle).to receive(:reset)
+      end
+
+      it 'reports every byte of the body exactly once' do
+        body = 'y' * 40_000
+        stub_request(:get, url).to_return(status: 200, body: body)
+
+        download
+        expect(reported.sum).to eq(body.bytesize)
+      end
+
+      it 'rewinds the bar at the start of every attempt' do
+        allow(described_class).to receive(:stream_download).and_return(false)
+        allow(described_class).to receive(:sleep)
+
+        download
+        expect(handle).to have_received(:reset).exactly(3).times
+      end
+
+      it 'works without any progress handle at all' do
+        stub_request(:get, url).to_return(status: 200, body: 'FLA-CONTENT')
+
+        expect(described_class.download_file(client, url, out)).to be true
+      end
+    end
+  end
+
+  describe '.write_stream' do
+    subject(:written) { described_class.write_stream(response, out, handle) }
+
+    include_context 'with a temporary directory'
+
+    let(:out) { File.join(dest, 'streamed.bin') }
+    let(:handle) { instance_double(BandcampDlRb::Progress::Handle) }
+    let(:chunks) { %w[aaaaa- bbbbbbbb-] }
+    let(:reported) { [] }
+    # Drives the chunk loop directly: WebMock hands the whole stubbed body over
+    # in a single chunk, which cannot show whether progress is reported per
+    # chunk or per flush.
+    let(:response) { instance_double(Net::HTTPResponse, read_body: nil) }
+
+    before do
+      allow(handle).to receive(:advance) { |bytes| reported << bytes }
+      allow(response).to receive(:read_body) do |&block|
+        chunks.each { |chunk| block.call(chunk) }
+      end
+    end
+
+    it { is_expected.to be true }
+
+    it 'reports each chunk as it arrives rather than at flush time' do
+      written
+      expect(reported).to eq(chunks.map(&:bytesize))
+    end
+
+    it 'writes every chunk to the destination' do
+      written
+      expect(File.read(out)).to eq(chunks.join)
+    end
+
+    context 'without a progress handle' do
+      subject(:written) { described_class.write_stream(response, out) }
+
+      let(:handle) { nil }
+
+      it { is_expected.to be true }
+
+      it 'still writes every chunk' do
+        written
+        expect(File.read(out)).to eq(chunks.join)
+      end
+    end
+  end
+
+  describe '.stream_download' do
+    subject(:outcome) { described_class.stream_download(client, url, '/tmp/out') }
+
+    let(:url) { 'https://bcbits.com/file.flac' }
+
+    context 'when the connection fails' do
+      before { stub_request(:get, url).to_raise(StandardError, 'connection failed') }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when the server answers with an error' do
+      before { stub_request(:get, url).to_return(status: 500) }
+
+      it { is_expected.to be_nil }
+    end
+  end
+
+  describe '.download_size' do
+    subject(:size) { described_class.download_size(client, url, max_redirects: 5) }
+
+    let(:url) { 'https://bcbits.com/file.flac' }
+    let(:ranged) { { headers: { 'Range' => 'bytes=0-0' } } }
+
+    context 'when the server honours the range' do
+      before do
+        stub_request(:get, url).with(**ranged)
+                               .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/12345' }, body: 'x')
+      end
+
+      it { is_expected.to eq(12_345) }
+    end
+
+    context 'when the server ignores the range' do
+      before do
+        stub_request(:get, url).with(**ranged)
+                               .to_return(status: 200, headers: { 'Content-Length' => '2048' }, body: 'x')
+      end
+
+      it { is_expected.to eq(2048) }
+    end
+
+    context 'when the server redirects first' do
+      let(:final_url) { 'https://final.example/file.flac' }
+
+      before do
+        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
+        stub_request(:get, final_url).with(**ranged)
+                                     .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/99' }, body: 'x')
+      end
+
+      it { is_expected.to eq(99) }
+    end
+
+    context 'when the size-check redirect stays on bcbits' do
+      let(:final_url) { 'https://d1.bcbits.com/file.flac' }
+
+      before do
+        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
+        stub_request(:get, final_url).with(**ranged)
+                                     .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/99' }, body: 'x')
+      end
+
+      it 'keeps the cookie on the redirect' do
+        size
+        expect(a_request(:get, final_url).with(headers: { 'Cookie' => 'identity=ident' })).to have_been_made
+      end
+    end
+
+    context 'when the size-check redirect leaves the allowlist' do
+      let(:final_url) { 'https://example.com/file.flac' }
+
+      before do
+        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => final_url })
+        stub_request(:get, final_url).with(**ranged)
+                                     .to_return(status: 206, headers: { 'Content-Range' => 'bytes 0-0/99' }, body: 'x')
+      end
+
+      it 'drops the cookie on the redirect' do
+        size
+        expect(a_request(:get, final_url).with { |req| !req.headers.key?('Cookie') }).to have_been_made
+      end
+    end
+
+    context 'when no size header comes back' do
+      before { stub_request(:get, url).with(**ranged).to_return(status: 206, body: 'x') }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when the request fails' do
+      before { stub_request(:get, url).with(**ranged).to_raise(StandardError, 'boom') }
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when the redirect never ends' do
+      before do
+        stub_request(:get, url).to_return(status: 302, headers: { 'Location' => 'https://other.example/f' })
+        stub_request(:get, 'https://other.example/f')
+          .to_return(status: 302, headers: { 'Location' => 'https://elsewhere.example/f' })
+      end
+
+      it 'gives up once the budget is spent' do
+        expect(described_class.download_size(client, url, max_redirects: 2)).to be_nil
       end
     end
   end
