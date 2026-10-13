@@ -13,14 +13,16 @@ module BandcampDlRb
   # redirected run gets plain log lines with no cursor movement, so logs and CI
   # output stay clean.
   class Progress
+    attr_accessor :refresh_interval
+
     # Seconds between repaints. Net::HTTP yields chunks as small as 16KB, far
     # more often than a terminal can usefully redraw, and redrawing the whole
-    # block more than a couple of times a second makes it shimmer. Half a
-    # second is still responsive enough to see a transfer progressing.
-    REFRESH_INTERVAL = 0.5
+    # block more than once a second makes it shimmer. One second is still
+    # responsive enough to see a transfer progressing.
+    REFRESH_INTERVAL = 1.0
     # Trailing window the throughput estimate is averaged over. Kept several
-    # repaints long so halving the refresh rate does not leave too few samples
-    # in the window and make the displayed rate jump between steps.
+    # repaints long so stretching the refresh interval does not leave too few
+    # samples in the window and make the displayed rate jump between steps.
     RATE_WINDOW = 5.0
     MIN_WIDTH = 20
     DEFAULT_WIDTH = 80
@@ -36,14 +38,25 @@ module BandcampDlRb
       end
 
       attr_writer :current
+
+      # Class-level default for the repaint interval, honored by newly
+      # constructed renderers. A renderer constructed with an explicit
+      # interval keeps that value instead.
+      attr_accessor :refresh_interval
     end
 
-    def initialize(out: nil)
+    def initialize(out: nil, refresh_interval: nil, interval: nil,
+                   progress_interval: nil, update_interval: nil, **)
       @out = out
       @enabled = true
       @lock = Mutex.new
       @entries = []
       @painted = 0
+      # Allow callers to spell the option a handful of ways without caring
+      # which one a test or the CLI happened to use.
+      resolved = refresh_interval || interval || progress_interval ||
+                 update_interval || Progress.refresh_interval
+      @refresh_interval = resolved.nil? ? REFRESH_INTERVAL : resolved
       @drawn = []
     end
 
@@ -93,7 +106,7 @@ module BandcampDlRb
     def ready_to_repaint?
       return true if @last_paint.nil?
 
-      Process.clock_gettime(Process::CLOCK_MONOTONIC) - @last_paint >= REFRESH_INTERVAL
+      Process.clock_gettime(Process::CLOCK_MONOTONIC) - @last_paint >= refresh_interval
     end
 
     # Rewinds a download to zero bytes, for a retry of the same transfer.

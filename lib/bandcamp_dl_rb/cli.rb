@@ -23,6 +23,7 @@ module BandcampDlRb
       return 1 unless valid_options?(options)
 
       Progress.current.enabled = options[:progress]
+      Progress.current.refresh_interval = options[:progress_interval] if options[:progress_interval]
       FileUtils.mkdir_p(options[:library])
       identity = authenticate(options)
       return 1 unless identity
@@ -60,7 +61,8 @@ module BandcampDlRb
         jobs: 1,
         page_size: BandcampDlRb::DEFAULT_PAGE_SIZE,
         filter: nil,
-        progress: true
+        progress: true,
+        progress_interval: 1.0
       }
 
       parser = build_parser(options)
@@ -73,7 +75,7 @@ module BandcampDlRb
     private
 
     def valid_options?(options)
-      valid_jobs?(options) && valid_page_size?(options) && valid_mode?(options)
+      valid_jobs?(options) && valid_page_size?(options) && valid_progress_interval?(options) && valid_mode?(options)
     end
 
     def valid_mode?(options)
@@ -106,6 +108,16 @@ module BandcampDlRb
       return true if (1..BandcampDlRb::MAX_PAGE_SIZE).cover?(page_size)
 
       @err.puts "ERROR: --page-size must be between 1 and #{BandcampDlRb::MAX_PAGE_SIZE}."
+      @err.puts(options[:parser])
+      false
+    end
+
+    def valid_progress_interval?(options)
+      interval = options[:progress_interval]
+      return true unless interval
+      return true if interval.is_a?(Numeric) && interval.positive?
+
+      @err.puts 'ERROR: --progress-interval must be a positive number.'
       @err.puts(options[:parser])
       false
     end
@@ -342,6 +354,10 @@ module BandcampDlRb
           options[:filter] = v
         end
         opts.on('--no-progress', 'Do not draw progress bars for downloads') { options[:progress] = false }
+        opts.on('--progress-interval SECONDS', Float,
+                'Repaint progress bars at most once every SECONDS seconds (default: 1.0)') do |v|
+          options[:progress_interval] = v
+        end
         opts.on('-v', '--verbose', 'Verbose output') { BandcampDlRb.verbose = true }
         opts.on('-h', '--help', 'Show this help') do
           @out.puts opts

@@ -16,6 +16,7 @@ _bandcamp_dl_rb() {
     '--force[Re-download even if album already exists]' \
     '--no-unzip[Save album downloads as ZIPs without extracting track files]' \
     '--no-progress[Do not draw progress bars for downloads]' \
+    '--progress-interval[Repaint progress bars at most once every SECONDS seconds]' \
     '--dry-run[Show what would be downloaded without downloading]' \
     '--url[Download a specific album/track by URL]:url' \
     {-j,--jobs}'[Download N albums in parallel (1-16)]:jobs' \
