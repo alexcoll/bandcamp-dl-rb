@@ -126,6 +126,11 @@ RSpec.describe BandcampDlRb::CLI do
       options = described_class.parse_args(['--library', '/x', '--no-unzip', 'u'])
       expect(options[:unzip]).to be false
     end
+
+    it 'parses --temp-dir' do
+      options = described_class.parse_args(['--library', '/x', '--temp-dir', '/dev/shm', 'u'])
+      expect(options[:temp_dir]).to eq('/dev/shm')
+    end
   end
 
   describe '.run' do

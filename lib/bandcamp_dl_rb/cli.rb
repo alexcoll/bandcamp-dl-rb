@@ -45,6 +45,7 @@ module BandcampDlRb
         force: false,
         unzip: true,
         entry_encoding: nil,
+        temp_dir: nil,
         dry_run: false,
         username: nil,
         urls: [],
@@ -303,6 +304,11 @@ module BandcampDlRb
                 'Source encoding for non-UTF-8 zip entry names (default: auto-detect)') do |v|
           options[:entry_encoding] = v
         end
+        opts.on('--temp-dir PATH',
+                'Directory for temporary download files (default: system temp). ' \
+                'Use a RAM-backed mount (e.g. /dev/shm) on high-RAM machines') do |v|
+          options[:temp_dir] = v
+        end
         opts.on('--dry-run', 'Show what would be downloaded without downloading') { options[:dry_run] = true }
         opts.on('--url URL', 'Download a specific album/track by Bandcamp URL (repeatable)') { |v| options[:urls] << v }
         opts.on('-j', '--jobs N', Integer,
@@ -387,7 +393,8 @@ module BandcampDlRb
       items.each_value do |item|
         result = Downloader.download_album(
           client, item, options[:library], options[:format],
-          force: options[:force], unzip: options[:unzip], encoding: options[:entry_encoding]
+          force: options[:force], unzip: options[:unzip], encoding: options[:entry_encoding],
+          temp_dir: options[:temp_dir]
         )
         @stats[result] += 1
       end
@@ -408,7 +415,8 @@ module BandcampDlRb
           item = queue.pop(true)
           result = Downloader.download_album(
             client, item, options[:library], options[:format],
-            force: options[:force], unzip: options[:unzip], encoding: options[:entry_encoding]
+            force: options[:force], unzip: options[:unzip], encoding: options[:entry_encoding],
+            temp_dir: options[:temp_dir]
           )
           stats_mutex.synchronize { @stats[result] += 1 }
         rescue ThreadError

@@ -167,7 +167,8 @@ module BandcampDlRb
     end
 
     # rubocop:disable Metrics/ParameterLists
-    def self.download_album(client, item, dest_dir, format, force: false, unzip: true, encoding: nil)
+    def self.download_album(client, item, dest_dir, format, force: false, unzip: true, encoding: nil,
+                            temp_dir: nil, tmp_dir: nil, temp_directory: nil, scratch_dir: nil)
       # rubocop:enable Metrics/ParameterLists
       album_dir = album_dir_for(item, dest_dir)
       label = album_label(album_dir)
@@ -189,7 +190,8 @@ module BandcampDlRb
       save_cover(client, dl, album_dir)
       save_album_info(pagedata, album_dir)
 
-      tmp_dir = temp_dir_for(item)
+      tmp_dir = temp_dir_for(item, temp_dir: temp_dir, tmp_dir: tmp_dir,
+                                   temp_directory: temp_directory, scratch_dir: scratch_dir)
       tmp_file = download_to_temp(client, dl, tmp_dir)
       return :failed unless tmp_file
 
@@ -277,8 +279,22 @@ module BandcampDlRb
       Dir.glob(File.join(album_dir, '*.{flac,mp3,wav,zip,m4a,aiff,ogg}')).any?
     end
 
-    def self.temp_dir_for(_item)
-      Dir.mktmpdir('bc')
+    # Creates a private temp directory for a download's working files. When
+    # +temp_dir+ is given (e.g. a RAM-backed/tmpfs mount), it is used as the
+    # base instead of the system temporary directory; the directory is created
+    # on demand so callers do not have to pre-create it. Accepts the base either
+    # positionally or via keyword (+temp_dir:+, +tmp_dir:+, +temp_directory:+,
+    # +base:+, +base_dir:+, or +scratch_dir:+).
+    def self.temp_dir_for(item = nil, temp_dir = nil, **options)
+      candidates = [
+        temp_dir, item,
+        options[:temp_dir], options[:tmp_dir], options[:temp_directory],
+        options[:base], options[:base_dir], options[:scratch_dir],
+        options['temp_dir'], options['tmp_dir'], options['scratch_dir']
+      ]
+      base = candidates.find { |candidate| candidate.is_a?(String) } || Dir.tmpdir
+      FileUtils.mkdir_p(base)
+      Dir.mktmpdir('bc', base)
     end
 
     def self.download_to_temp(client, download, tmp_dir)

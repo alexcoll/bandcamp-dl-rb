@@ -8,3 +8,5 @@ tmp/
 coverage/
 .bandcamp-sync.json
 .DS_Store
+cookies*.txt
+cookies.txt

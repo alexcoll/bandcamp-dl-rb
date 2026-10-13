@@ -163,6 +163,13 @@ CP932/Shift-JIS archives from Japanese Windows tooling. By default entry
 names are decoded by trying CP932 then CP437; give an explicit encoding to
 override that. Ignored when \-\-no-unzip is used.
 .TP
+.B \-\-temp-dir \fIPATH\fR
+Directory in which to create temporary download files (default: the system
+temporary directory). Point this at a RAM-backed mount such as
+.I /dev/shm
+to keep downloads off a slow disk; the directory is created if it does not
+exist.
+.TP
 .B \-\-dry-run
 List what would be downloaded, with item IDs and sizes, without downloading
 anything.
