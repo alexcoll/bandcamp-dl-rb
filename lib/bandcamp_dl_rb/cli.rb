@@ -5,12 +5,52 @@ module BandcampDlRb
   class CLI
     MAX_JOBS = 16
 
+    def self.default_options
+      {
+        format: 'flac',
+        library: nil,
+        browser: 'auto',
+        cookie_file: nil,
+        include_hidden: false,
+        since: nil,
+        until_date: nil,
+        force: false,
+        unzip: true,
+        entry_encoding: nil,
+        temp_dir: nil,
+        state_file: nil,
+        dry_run: false,
+        username: nil,
+        urls: [],
+        items: nil,
+        jobs: 1,
+        page_size: BandcampDlRb::DEFAULT_PAGE_SIZE,
+        filter: nil,
+        progress: true,
+        progress_interval: 1.0
+      }
+    end
+
     def self.parse_args(argv = ARGV)
       new.parse_args(argv)
     end
 
     def self.run(argv = ARGV, out: $stdout, err: $stderr)
       new(out: out, err: err).run(argv)
+    end
+
+    # Expose the OptionParser that defines the CLI options so callers (such as
+    # the completions generator) can introspect it without parsing ARGV.
+    def self.option_parser(options = default_options)
+      new.send(:build_parser, options)
+    end
+
+    def self.build_parser(options = default_options)
+      option_parser(options)
+    end
+
+    class << self
+      alias parser option_parser
     end
 
     def initialize(out: $stdout, err: $stderr)
@@ -41,29 +81,7 @@ module BandcampDlRb
     end
 
     def parse_args(argv = ARGV)
-      options = {
-        format: 'flac',
-        library: nil,
-        browser: 'auto',
-        cookie_file: nil,
-        include_hidden: false,
-        since: nil,
-        until_date: nil,
-        force: false,
-        unzip: true,
-        entry_encoding: nil,
-        temp_dir: nil,
-        state_file: nil,
-        dry_run: false,
-        username: nil,
-        urls: [],
-        items: nil,
-        jobs: 1,
-        page_size: BandcampDlRb::DEFAULT_PAGE_SIZE,
-        filter: nil,
-        progress: true,
-        progress_interval: 1.0
-      }
+      options = self.class.default_options.transform_values { |value| value.is_a?(Array) ? value.dup : value }
 
       parser = build_parser(options)
       parser.parse!(argv)

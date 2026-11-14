@@ -20,6 +20,7 @@ require 'bandcamp_dl_rb/progress'
 require 'bandcamp_dl_rb/client'
 require 'bandcamp_dl_rb/downloader'
 require 'bandcamp_dl_rb/cli'
+require 'bandcamp_dl_rb/completions_generator'
 
 # Downloads all your Bandcamp purchases and organizes them for a Plex library.
 module BandcampDlRb
