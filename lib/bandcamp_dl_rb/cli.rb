@@ -29,9 +29,7 @@ module BandcampDlRb
       BandcampDlRb::Downloader.cleanup_old_partial_downloads(options[:temp_dir])
       return 1 unless valid_options?(options)
 
-      Progress.current.enabled = options[:progress]
-      Progress.current.refresh_interval = options[:progress_interval] if options[:progress_interval]
-      FileUtils.mkdir_p(options[:library])
+      prepare_run(options)
       identity = authenticate(options)
       return 1 unless identity
 
@@ -127,6 +125,12 @@ module BandcampDlRb
       @err.puts 'ERROR: --progress-interval must be a positive number.'
       @err.puts(options[:parser])
       false
+    end
+
+    def prepare_run(options)
+      Progress.current.enabled = options[:progress]
+      Progress.current.refresh_interval = options[:progress_interval] if options[:progress_interval]
+      FileUtils.mkdir_p(options[:library])
     end
 
     def authenticate(options)
