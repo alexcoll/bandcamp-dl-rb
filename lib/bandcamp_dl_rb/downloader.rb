@@ -344,18 +344,6 @@ module BandcampDlRb
       true
     end
 
-    CLEANUP_ALIASES = %i[
-      cleanup_old_downloads remove_old_partial_downloads
-      cleanup_old_temp_dirs remove_old_temp_dirs
-      cleanup_stale_temp_dirs remove_stale_temp_dirs
-      cleanup_temp_dirs purge_old_partial_downloads
-      cleanup_partial_downloads remove_partial_downloads
-      clean_old_partial_downloads cleanup_old_partials
-    ].freeze
-    CLEANUP_ALIASES.each do |name|
-      singleton_class.alias_method(name, :cleanup_old_partial_downloads)
-    end
-
     def self.download_to_temp(client, download, tmp_dir, label: nil)
       FileUtils.mkdir_p(tmp_dir)
       ext = BandcampDlRb::FORMAT_MAP[download[:format]] || '.zip'
