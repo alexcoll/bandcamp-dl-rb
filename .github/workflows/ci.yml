@@ -62,7 +62,7 @@ jobs:
         run: bundle exec rspec spec/bandcamp_dl_rb/manpage_spec.rb
 
   completions:
-    name: Completions parity
+    name: Completions generation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -74,5 +74,8 @@ jobs:
           ruby-version: '3.4'
           bundler-cache: true
 
-      - name: Verify shell completions cover every CLI option
-        run: bundle exec rspec spec/bandcamp_dl_rb/completions_spec.rb
+      - name: Regenerate shell completions into a temp dir
+        run: bundle exec rake completions:generate OUTPUT_DIR=tmp/completions
+
+      - name: Fail on any diff
+        run: diff -r tmp/completions completions

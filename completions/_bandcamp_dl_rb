@@ -1,35 +1,36 @@
 #compdef bandcamp_dl_rb
 
 _bandcamp_dl_rb() {
-  local -a formats browsers
-  formats=(flac wav aiff-lossless mp3-320 mp3-v0 aac-hi alac vorbis)
-  browsers=(firefox safari auto)
+  local -a format_values
+  format_values=(flac mp3-320 mp3-v0 wav aiff-lossless aac-hi alac vorbis)
+  local -a browser_values
+  browser_values=(firefox safari auto)
 
   _arguments \
-    {-l,--library}'[Plex library root path]:path:_files' \
-    {-f,--format}'[Audio format]:format:(${(j: :)formats})' \
-    {-b,--browser}'[Browser to extract cookies from]:browser:(${(j: :)browsers})' \
-    {-c,--cookie-file}'[Path to cookies.txt file or identity cookie value]:file:_files' \
-    {-H,--include-hidden}'[Also download hidden items]' \
-    '--since[Only download items purchased on/after DATE]:date' \
-    '--until[Only download items purchased before DATE]:date' \
+    '{-l,--library}[Plex library root path (required)]:file:_files' \
+    '{-f,--format}[Audio format (default: flac)]:FORMAT:(${(j: :)format_values})' \
+    '{-b,--browser}[Browser to extract cookies from (default: auto)]:BROWSER:(${(j: :)browser_values})' \
+    '{-c,--cookie-file}[Path to cookies.txt file, or raw identity cookie value]:file:_files' \
+    '{-H,--include-hidden}[Also download hidden items]' \
+    '--since[Only download items purchased on or after this date (YYYY-MM-DD)]:DATE' \
+    '--until[Only download items purchased before this date (YYYY-MM-DD)]:DATE' \
     '--force[Re-download even if album already exists]' \
     '--no-unzip[Save album downloads as ZIPs without extracting track files]' \
-    '--no-progress[Do not draw progress bars for downloads]' \
-    '--progress-interval[Repaint progress bars at most once every SECONDS seconds]' \
-    '--dry-run[Show what would be downloaded without downloading]' \
-    '--url[Download a specific album/track by URL]:url' \
-    {-j,--jobs}'[Download N albums in parallel (1-16)]:jobs' \
-    '--page-size[Request N collection items per page (1-500)]:page size' \
-    '--entry-encoding[Source encoding for non-UTF-8 zip entry names]:encoding' \
-    '--temp-dir[Directory for temporary download files]:directory:_files -/' \
-    '--state-file[Path for the sync state file]:file:_files' \
+    '--entry-encoding[Source encoding for non-UTF-8 zip entry names (default: auto-detect)]:ENC' \
+    '--temp-dir[Directory for temporary download files (default: a cache dir on disk). Override to place working files on a specific filesystem]:file:_files' \
+    '--state-file[Path for the sync state file (default: <library>/.bandcamp-sync.json)]:file:_files' \
     '--no-state-file[Do not write a sync state file]' \
-    '--items[Download specific items by ID]:ids' \
-    '--filter[Download only items matching REGEX]:regex' \
-    {-v,--verbose}'[Verbose output]' \
-    {-h,--help}'[Show help]' \
-    {-V,--version}'[Show version]' \
+    '--dry-run[Show what would be downloaded without downloading]' \
+    '--url[Download a specific album/track by Bandcamp URL (repeatable)]:URL' \
+    '{-j,--jobs}[Download up to N albums in parallel (1-16, default: 1)]:N' \
+    '--page-size[Collection page size to request (1-500, default: 100)]:N' \
+    '--items[Download specific items by ID, e.g. a100,t200 (requires username)]:IDS' \
+    '--filter[Download only items whose artist or title matches REGEX (requires username)]:REGEX' \
+    '--no-progress[Do not draw progress bars for downloads]' \
+    '--progress-interval[Repaint progress bars at most once every SECONDS seconds (default: 1.0)]:SECONDS' \
+    '{-v,--verbose}[Verbose output]' \
+    '{-h,--help}[Show this help]' \
+    '{-V,--version}[Show version]'
     '*:bandcamp username:_users' && return 0
 
   _files

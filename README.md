@@ -408,7 +408,9 @@ rspec
 ## Shell completion
 
 Tab completion for the CLI flags ships with the gem in `completions/`
-(bash, zsh, and fish). Source the file for your shell in your dotfiles, or use a
+(bash, zsh, and fish). The files are generated from the CLI's `OptionParser`
+via `rake completions:generate`, so they can never drift from the options the
+program actually defines. Source the file for your shell in your dotfiles, or use a
 framework that picks up completions from `gem contents bandcamp_dl_rb`:
 
 ```bash
