@@ -5,16 +5,18 @@ module BandcampDlRb
   class CLI
     MAX_JOBS = 16
 
-    def self.parse_args(argv = ARGV)
-      new.parse_args(argv)
-    end
+    class << self
+      def parse_args(argv = ARGV)
+        new.parse_args(argv)
+      end
 
-    def self.run(argv = ARGV, out: $stdout, err: $stderr)
-      new(out: out, err: err).run(argv)
-    end
+      def run(argv = ARGV, out: $stdout, err: $stderr)
+        new(out: out, err: err).run(argv)
+      end
 
-    def self.cleanup_old_partial_downloads(*, **)
-      BandcampDlRb::Downloader.cleanup_old_partial_downloads(*, **)
+      def cleanup_old_partial_downloads(*, **)
+        BandcampDlRb::Downloader.cleanup_old_partial_downloads(*, **)
+      end
     end
 
     def initialize(out: $stdout, err: $stderr)
