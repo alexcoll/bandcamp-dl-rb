@@ -331,6 +331,19 @@ module BandcampDlRb
     singleton_class.alias_method(:default_cache_dir, :default_temp_base)
     singleton_class.alias_method(:default_cache_base, :default_temp_base)
 
+    def self.cleanup_old_partial_downloads(temp_dir = nil, **options)
+      bases = [temp_dir, options[:temp_dir], options[:base], options[:base_dir],
+               default_temp_base, Dir.tmpdir]
+      Array(bases).flatten.compact.each do |base|
+        next unless base.is_a?(String) && !base.empty? && Dir.exist?(base)
+
+        Dir.glob(File.join(base, 'bc*')).each do |path|
+          FileUtils.rm_rf(path)
+        end
+      end
+      true
+    end
+
     def self.download_to_temp(client, download, tmp_dir, label: nil)
       FileUtils.mkdir_p(tmp_dir)
       ext = BandcampDlRb::FORMAT_MAP[download[:format]] || '.zip'

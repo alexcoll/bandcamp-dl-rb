@@ -5,12 +5,18 @@ module BandcampDlRb
   class CLI
     MAX_JOBS = 16
 
-    def self.parse_args(argv = ARGV)
-      new.parse_args(argv)
-    end
+    class << self
+      def parse_args(argv = ARGV)
+        new.parse_args(argv)
+      end
 
-    def self.run(argv = ARGV, out: $stdout, err: $stderr)
-      new(out: out, err: err).run(argv)
+      def run(argv = ARGV, out: $stdout, err: $stderr)
+        new(out: out, err: err).run(argv)
+      end
+
+      def cleanup_old_partial_downloads(*, **)
+        BandcampDlRb::Downloader.cleanup_old_partial_downloads(*, **)
+      end
     end
 
     def initialize(out: $stdout, err: $stderr)
@@ -20,11 +26,12 @@ module BandcampDlRb
 
     def run(argv = ARGV)
       options = parse_args(argv)
+      # Remove stale partial downloads from previous interrupted runs before
+      # starting a new one.
+      BandcampDlRb::Downloader.cleanup_old_partial_downloads(options[:temp_dir])
       return 1 unless valid_options?(options)
 
-      Progress.current.enabled = options[:progress]
-      Progress.current.refresh_interval = options[:progress_interval] if options[:progress_interval]
-      FileUtils.mkdir_p(options[:library])
+      prepare_run(options)
       identity = authenticate(options)
       return 1 unless identity
 
@@ -120,6 +127,12 @@ module BandcampDlRb
       @err.puts 'ERROR: --progress-interval must be a positive number.'
       @err.puts(options[:parser])
       false
+    end
+
+    def prepare_run(options)
+      Progress.current.enabled = options[:progress]
+      Progress.current.refresh_interval = options[:progress_interval] if options[:progress_interval]
+      FileUtils.mkdir_p(options[:library])
     end
 
     def authenticate(options)
